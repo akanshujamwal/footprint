@@ -445,7 +445,7 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
       </div>
       <button class="btn btn-gold" onclick="generateReport()">✨ Generate AI Report</button>
       <button class="btn btn-outline" id="saveReflBtn" onclick="saveReflections()" style="display:none">💾 Save Reflections</button>
-      <button class="btn btn-outline" id="exportRptBtn" onclick="exportReport()" style="display:none">⬇️ Export .txt</button>
+      <button class="btn btn-outline" id="exportRptBtn" onclick="exportPDF()" style="display:none">⬇️ Export PDF</button>
       <button class="btn btn-danger" id="deleteRptBtn" onclick="deleteReport()" style="display:none;font-size:11px;padding:10px 18px">🗑 Delete</button>
     </div>
   </div>
@@ -1469,24 +1469,93 @@ async function generateReport() {
     out.innerHTML = `<div class="empty"><div class="empty-icon">📊</div><h3>No entries for this period</h3><p>Log tasks first then generate your report.</p></div>`;
     return;
   }
-  out.innerHTML = `<div class="loading-wrap"><div class="spin"></div><div class="loading-txt">Generating AI report</div></div>`;
+  out.innerHTML = `<div class="loading-wrap"><div class="spin"></div><div class="loading-txt">Analysing all entries with AI — this may take a moment</div></div>`;
 
-  const log = me.map(e=>`[${e.date}] ${e.title} | cats:${(e.cats||[]).join(',')} | impact:${e.impact} | effort:${e.effort||'?'}h | outcome:${e.outcome||'N/A'} | sheet:${e.sheetName||'—'} | notes:${e.desc||''}`).join('\n');
-  const prompt = `You are both a senior engineering manager and a product lead reviewing a developer's monthly work log.
-Analyze this log for ${month} and return ONLY valid JSON (no markdown):
+  // ── Build rich stats for the prompt ──
+  const totalHrs    = me.reduce((s,e)=>s+(parseFloat(e.effort)||0),0);
+  const daysActive  = [...new Set(me.map(e=>e.date))].length;
+  const highCount   = me.filter(e=>e.impact==='high').length;
+  const medCount    = me.filter(e=>e.impact==='medium').length;
+  const lowCount    = me.filter(e=>e.impact==='low').length;
+  const catCounts   = {};
+  me.forEach(e=>(e.cats||[]).forEach(c=>{ catCounts[c]=(catCounts[c]||0)+1; }));
+  const catSummary  = Object.entries(catCounts).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c}:${n}`).join(', ');
+  const withOutcome = me.filter(e=>e.outcome).length;
+  const withDesc    = me.filter(e=>e.desc && e.desc.length>20).length;
+  const avgEffort   = me.filter(e=>e.effort).length ? (totalHrs / me.filter(e=>e.effort).length).toFixed(1) : '?';
 
-${log}
+  // Week-by-week breakdown
+  const byWeek = {};
+  me.forEach(e=>{
+    const d = new Date(e.date+'T12:00');
+    const wk = `W${Math.ceil(d.getDate()/7)}`;
+    if(!byWeek[wk]) byWeek[wk]=[];
+    byWeek[wk].push(e);
+  });
+  const weekSummary = Object.entries(byWeek).map(([w,es])=>`${w}: ${es.length} tasks, ${es.reduce((s,e)=>s+(parseFloat(e.effort)||0),0).toFixed(1)}h`).join(' | ');
 
-{"devGrade":"A|B|C|D","pmGrade":"A|B|C|D","overallGrade":"A|B|C|D","consistencyGrade":"A|B|C|D","devGradeReason":"one sentence","pmGradeReason":"one sentence","executiveSummary":"2-3 sentences","oneThingToRemember":"one memorable insight","devStrengths":["...","...","..."],"devImprove":["...","...","..."],"pmStrengths":["...","...","..."],"pmImprove":["...","...","..."],"topLearnings":["...","...","..."],"blindSpots":["...","..."],"nextMonthGoals":["...","...","..."]}`;
+  // High-impact entries for deep analysis
+  const highlights = me.filter(e=>e.impact==='high' || e.outcome).slice(0,12)
+    .map(e=>`  [${e.date}] "${e.title}" (${(e.cats||[]).join('+')||'uncategorised'}, ${e.effort||'?'}h) → ${e.outcome||'no outcome noted'} | ${e.desc||'no description'}`).join('\n');
+
+  // All entries compact
+  const allLog = me.sort((a,b)=>a.date.localeCompare(b.date))
+    .map(e=>`[${e.date}] [${e.impact}] [${(e.cats||[]).join('+')||'?'}] ${e.title} (${e.effort||'?'}h) | outcome: ${e.outcome||'—'} | notes: ${e.desc||'—'}`).join('\n');
+
+  const prompt = `You are a senior engineering manager AND product lead conducting a deep monthly performance review.
+Analyse this developer's complete work log for ${month} and produce a thorough, honest, specific report.
+
+== STATISTICS ==
+Total entries: ${me.length} | Active days: ${daysActive} | Total hours logged: ${totalHrs.toFixed(1)}h | Avg effort/task: ${avgEffort}h
+Impact split: ${highCount} high / ${medCount} medium / ${lowCount} low
+Category breakdown: ${catSummary}
+Entries with outcomes: ${withOutcome}/${me.length} | Entries with detail: ${withDesc}/${me.length}
+Week-by-week: ${weekSummary}
+
+== HIGH-IMPACT & OUTCOME ENTRIES (analyse these deeply) ==
+${highlights || 'None tagged as high impact'}
+
+== COMPLETE LOG ==
+${allLog}
+
+Respond with ONLY valid JSON (absolutely no markdown, no explanation, no code blocks):
+{
+  "devGrade": "A/B/C/D",
+  "pmGrade": "A/B/C/D",
+  "overallGrade": "A/B/C/D",
+  "consistencyGrade": "A/B/C/D",
+  "devGradeReason": "One specific sentence citing actual tasks from the log",
+  "pmGradeReason": "One specific sentence citing actual tasks from the log",
+  "executiveSummary": "3-4 sentences: what was accomplished this month, what stands out, overall trajectory. Be specific — name actual projects/tasks.",
+  "deepAnalysis": "4-6 sentences of deep analysis: patterns in the work, quality of outcomes, how dev and PM skills interplay, any concerning gaps, growth trajectory. Reference specific entries.",
+  "oneThingToRemember": "One powerful, memorable insight personalised to THIS person's actual work this month",
+  "devStrengths": ["Specific strength with example from log","Specific strength with example","Specific strength with example"],
+  "devImprove": ["Specific actionable improvement with context","Specific improvement","Specific improvement"],
+  "pmStrengths": ["Specific PM strength observed","Specific PM strength","Specific PM strength"],
+  "pmImprove": ["Specific PM improvement needed","Specific improvement","Specific improvement"],
+  "topLearnings": ["Key learning extracted from outcomes/notes","Key learning","Key learning"],
+  "blindSpots": ["A pattern or area being neglected based on log analysis","Another blind spot"],
+  "weeklyRhythm": "2-3 sentences analysing consistency across weeks — were there productive sprints, dead weeks, clustering of work?",
+  "impactAnalysis": "2-3 sentences on whether the high-impact tasks represent real milestones or whether high-impact is being over- or under-used as a tag",
+  "careerInsight": "2-3 sentences: what does this month's work say about their career trajectory, skills development, and professional brand?",
+  "nextMonthGoals": ["Specific, actionable goal tied to identified gap","Specific goal","Specific goal"],
+  "keyMetrics": {
+    "focusScore": "0-100 integer (how focused vs scattered was the work)",
+    "depthScore": "0-100 integer (how deep vs shallow based on effort and descriptions)",
+    "outcomeScore": "0-100 integer (% of tasks with meaningful outcomes)",
+    "consistencyScore": "0-100 integer (regularity of work across the month)"
+  }
+}`;
 
   let r;
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1500, messages:[{role:'user',content:prompt}] })
+      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:2500, messages:[{role:'user',content:prompt}] })
     });
     const data = await res.json();
-    r = JSON.parse((data.content||[]).map(c=>c.text||'').join('').replace(/```json|```/g,'').trim());
+    const raw = (data.content||[]).map(c=>c.text||'').join('').replace(/```json|```/g,'').trim();
+    r = JSON.parse(raw);
   } catch(e) { r = fallbackReport(me); }
 
   currentReport = r;
@@ -1500,17 +1569,26 @@ function fallbackReport(me) {
   const dN=me.filter(e=>(e.cats||[]).includes('dev')).length;
   const pN=me.filter(e=>(e.cats||[]).includes('pm')).length;
   const g=n=>n>=15?'A':n>=8?'B':n>=4?'C':'D';
-  return { devGrade:g(dN), pmGrade:g(pN), overallGrade:g(me.length), consistencyGrade:'B',
-    devGradeReason:`${dN} dev tasks logged.`, pmGradeReason:`${pN} PM tasks logged.`,
-    executiveSummary:`You logged ${me.length} entries this period. Add more detail for richer AI insights.`,
-    oneThingToRemember:'Specificity in your logs creates clarity in your growth.',
-    devStrengths:['Active development activity','Tracking outcomes','Cross-category work'],
-    devImprove:['Add technical detail','Track deep work vs meetings','Document key decisions'],
-    pmStrengths:['Growing product awareness','Logging cross-functional work','Outcome thinking'],
-    pmImprove:['Log more PM-specific tasks','Add user impact context','Practice problem statements'],
+  const hrs = me.reduce((s,e)=>s+(parseFloat(e.effort)||0),0);
+  return {
+    devGrade:g(dN), pmGrade:g(pN), overallGrade:g(me.length), consistencyGrade:'B',
+    devGradeReason:`${dN} dev tasks logged across the month.`,
+    pmGradeReason:`${pN} PM-related tasks logged.`,
+    executiveSummary:`You logged ${me.length} entries totalling ${hrs.toFixed(1)} hours this period. The AI analysis requires an Anthropic API key — add it to get deep personalised insights.`,
+    deepAnalysis:'Connect to the Anthropic API for a deep analysis of your work patterns, quality, and growth trajectory.',
+    oneThingToRemember:'The more detail you log, the more insight you get back.',
+    devStrengths:['Active development logging','Tracking task outcomes','Cross-category work visibility'],
+    devImprove:['Add more technical detail to entries','Track deep work vs meetings separately','Document key decisions and their rationale'],
+    pmStrengths:['Growing product awareness','Logging cross-functional collaboration','Building outcome-oriented thinking'],
+    pmImprove:['Log more PM-specific tasks','Add user impact context to outcomes','Practice framing work in problem/solution terms'],
     topLearnings: me.filter(e=>e.outcome).slice(0,3).map(e=>e.outcome).filter(Boolean),
-    blindSpots:['Under-representing PM work','Missing effort estimates'],
-    nextMonthGoals:['1 PM task per week','Effort hrs on every entry','Weekly retro entry'] };
+    blindSpots:['Under-representing PM work relative to dev','Missing effort estimates on many entries'],
+    weeklyRhythm:'Add more entries for weekly pattern analysis.',
+    impactAnalysis:'Tag more entries with impact levels to get meaningful impact distribution analysis.',
+    careerInsight:'Log consistently for 2-3 months to see career trajectory patterns emerge.',
+    nextMonthGoals:['Log at least 1 PM-focused task per week','Add effort hours to every single entry','Write a weekly retro entry every Friday'],
+    keyMetrics:{ focusScore:50, depthScore:50, outcomeScore:Math.round((me.filter(e=>e.outcome).length/me.length)*100)||0, consistencyScore:50 }
+  };
 }
 
 function renderReport(r, me, month, fsh) {
@@ -1537,6 +1615,17 @@ function renderReport(r, me, month, fsh) {
   const ins = (arr,col) => (arr||[]).map(s=>`<div class="ins-item"><div class="ins-dot" style="background:${col}"></div><div>${s}</div></div>`).join('');
   const ref = reflections[currentReportMonth]||{};
   const sh  = fsh ? sheetById(fsh) : null;
+  const km  = r.keyMetrics || {};
+
+  const scoreBar = (val, col) => {
+    const v = parseInt(val)||0;
+    return `<div style="display:flex;align-items:center;gap:8px;margin-top:5px">
+      <div style="flex:1;background:var(--rule);border-radius:3px;height:7px;overflow:hidden">
+        <div style="width:${v}%;background:${col};height:100%;border-radius:3px;transition:width 0.6s ease"></div>
+      </div>
+      <span style="font-family:DM Mono,monospace;font-size:11px;font-weight:600;color:${col};min-width:32px">${v}</span>
+    </div>`;
+  };
 
   document.getElementById('reportOut').innerHTML = `
 <div class="report-card">
@@ -1547,12 +1636,16 @@ function renderReport(r, me, month, fsh) {
     </div>
     <div class="rc-stamp">${r.overallGrade}</div>
   </div>
+
+  <!-- GRADES -->
   <div class="grade-grid">
     <div class="grade-box"><div class="grade-letter grade-${r.devGrade}">${r.devGrade}</div><div class="grade-lbl">Dev Skills</div><div class="grade-sub">${r.devGradeReason}</div></div>
     <div class="grade-box"><div class="grade-letter grade-${r.pmGrade}">${r.pmGrade}</div><div class="grade-lbl">PM Thinking</div><div class="grade-sub">${r.pmGradeReason}</div></div>
     <div class="grade-box"><div class="grade-letter grade-${r.consistencyGrade}">${r.consistencyGrade}</div><div class="grade-lbl">Consistency</div><div class="grade-sub">${Object.keys(dayMap).length} active days</div></div>
     <div class="grade-box"><div class="grade-letter grade-${r.overallGrade}">${r.overallGrade}</div><div class="grade-lbl">Overall</div><div class="grade-sub">${hN} high-impact</div></div>
   </div>
+
+  <!-- STATS -->
   <div class="stat-strip">
     <div class="stat-item"><div class="stat-num">${me.length}</div><div class="stat-lbl">Entries</div></div>
     <div class="stat-item" style="border-left-color:var(--dev)"><div class="stat-num">${dN}</div><div class="stat-lbl">Dev</div></div>
@@ -1561,13 +1654,36 @@ function renderReport(r, me, month, fsh) {
     <div class="stat-item"><div class="stat-num">${oN}</div><div class="stat-lbl">Outcomes</div></div>
     <div class="stat-item" style="border-left-color:var(--gold)"><div class="stat-num">${hrs>0?hrs.toFixed(1):'—'}</div><div class="stat-lbl">Hours</div></div>
   </div>
+
+  <!-- SCORE METERS -->
+  ${km.focusScore !== undefined ? `
+  <div class="ins-box" style="margin-bottom:20px">
+    <div class="ins-box-title" style="margin-bottom:12px">📐 Quality Scores</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div><div style="font-size:12px;font-weight:600">Focus</div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">How focused vs scattered</div>${scoreBar(km.focusScore,'var(--dev)')}</div>
+      <div><div style="font-size:12px;font-weight:600">Depth</div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Effort & detail quality</div>${scoreBar(km.depthScore,'var(--sync-pull)')}</div>
+      <div><div style="font-size:12px;font-weight:600">Outcomes</div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Tasks with clear results</div>${scoreBar(km.outcomeScore,'var(--gold)')}</div>
+      <div><div style="font-size:12px;font-weight:600">Consistency</div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Regularity across month</div>${scoreBar(km.consistencyScore,'var(--pm)')}</div>
+    </div>
+  </div>` : ''}
+
+  <!-- EXECUTIVE SUMMARY -->
   <div class="summary-box">
-    <div class="ins-box-title" style="color:var(--dev);margin-bottom:7px">✨ AI Summary <span class="badge badge-ai" style="margin-left:4px">AI</span></div>
-    <p style="font-size:14px;line-height:1.75">${r.executiveSummary}</p>
-    ${r.oneThingToRemember?`<p style="margin-top:9px;font-size:13px;font-family:DM Mono,monospace;color:var(--dev);font-style:italic">"${r.oneThingToRemember}"</p>`:''}
+    <div class="ins-box-title" style="color:var(--dev);margin-bottom:7px">✨ Executive Summary <span class="badge badge-ai" style="margin-left:4px">AI</span></div>
+    <p style="font-size:14px;line-height:1.8">${r.executiveSummary}</p>
+    ${r.oneThingToRemember?`<p style="margin-top:10px;font-size:13px;font-family:DM Mono,monospace;color:var(--dev);font-style:italic;border-top:1px solid rgba(26,77,62,0.15);padding-top:10px">"${r.oneThingToRemember}"</p>`:''}
   </div>
+
+  <!-- DEEP ANALYSIS -->
+  ${r.deepAnalysis ? `
+  <div class="ins-box" style="margin-bottom:20px;border-color:rgba(21,101,192,0.25);background:var(--sync-pull-light)">
+    <div class="ins-box-title" style="color:var(--sync-pull);margin-bottom:8px">🔬 Deep Analysis</div>
+    <p style="font-size:13px;line-height:1.8;color:var(--text)">${r.deepAnalysis}</p>
+  </div>` : ''}
+
+  <!-- ACTIVITY MAP -->
   <div style="margin-bottom:20px">
-    <div class="ins-box-title" style="margin-bottom:9px">Activity — ${label}</div>
+    <div class="ins-box-title" style="margin-bottom:9px">Activity Heatmap — ${label}</div>
     <div class="act-dots">${dots}</div>
     <div style="display:flex;gap:14px;margin-top:6px;font-family:DM Mono,monospace;font-size:10px;color:var(--muted)">
       <span><span style="display:inline-block;width:10px;height:10px;background:var(--dev);opacity:.7;border-radius:2px;margin-right:4px"></span>Dev</span>
@@ -1575,6 +1691,15 @@ function renderReport(r, me, month, fsh) {
       <span><span style="display:inline-block;width:10px;height:10px;background:var(--gold);opacity:.7;border-radius:2px;margin-right:4px"></span>Learn</span>
     </div>
   </div>
+
+  <!-- WEEKLY RHYTHM -->
+  ${r.weeklyRhythm ? `
+  <div class="ins-box" style="margin-bottom:20px">
+    <div class="ins-box-title" style="margin-bottom:6px">📅 Weekly Rhythm</div>
+    <p style="font-size:13px;line-height:1.75;color:var(--text)">${r.weeklyRhythm}</p>
+  </div>` : ''}
+
+  <!-- STRENGTHS & IMPROVEMENTS -->
   <div class="ins-grid">
     <div class="ins-box"><div class="ins-box-title">🖥 Dev — Strengths</div>${ins(r.devStrengths,'var(--dev)')}</div>
     <div class="ins-box"><div class="ins-box-title">🖥 Dev — Improve</div>${ins(r.devImprove,'var(--red)')}</div>
@@ -1583,13 +1708,32 @@ function renderReport(r, me, month, fsh) {
     <div class="ins-box"><div class="ins-box-title">📚 Top Learnings</div>${ins(r.topLearnings,'var(--gold)')}</div>
     <div class="ins-box"><div class="ins-box-title">⚠️ Blind Spots</div>${ins(r.blindSpots,'var(--pm)')}</div>
   </div>
-  <div class="ins-box" style="margin-top:13px">
+
+  <!-- IMPACT ANALYSIS -->
+  ${r.impactAnalysis ? `
+  <div class="ins-box" style="margin-top:14px">
+    <div class="ins-box-title" style="margin-bottom:6px">🎯 Impact Analysis</div>
+    <p style="font-size:13px;line-height:1.75">${r.impactAnalysis}</p>
+  </div>` : ''}
+
+  <!-- CAREER INSIGHT -->
+  ${r.careerInsight ? `
+  <div class="ins-box" style="margin-top:14px;border-color:rgba(200,151,58,0.35);background:var(--gold-light)">
+    <div class="ins-box-title" style="color:var(--gold);margin-bottom:6px">🚀 Career Insight</div>
+    <p style="font-size:13px;line-height:1.75">${r.careerInsight}</p>
+  </div>` : ''}
+
+  <!-- NEXT MONTH GOALS -->
+  <div class="ins-box" style="margin-top:14px">
     <div class="ins-box-title">🎯 Next Month Goals</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:9px;margin-top:8px">
-      ${(r.nextMonthGoals||[]).map((g,i)=>`<div style="display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.6"><span style="font-family:DM Mono,monospace;font-weight:600;color:var(--dev);min-width:20px">0${i+1}</span><span>${g}</span></div>`).join('')}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:10px">
+      ${(r.nextMonthGoals||[]).map((g,i)=>`<div style="display:flex;gap:9px;align-items:flex-start;font-size:13px;line-height:1.6;padding:10px;background:var(--paper);border-radius:4px;border:1px solid var(--rule)"><span style="font-family:DM Mono,monospace;font-weight:700;color:var(--dev);min-width:22px;font-size:12px">0${i+1}</span><span>${g}</span></div>`).join('')}
     </div>
   </div>
+
   <hr class="rc-divider">
+
+  <!-- SELF REFLECTIONS -->
   <div>
     <div style="font-family:Playfair Display,serif;font-size:19px;font-weight:800;margin-bottom:14px">Self Reflections <span class="badge badge-self" style="font-size:9px;vertical-align:middle">Your Words</span></div>
     <div class="manual-grid">
@@ -1631,42 +1775,415 @@ function saveReflections() {
   saveReflStore(); toast('Reflections saved!','ok');
 }
 
-function exportReport() {
-  const m=currentReportMonth; const r=currentReport;
-  if(!m||!r) { toast('Generate a report first','err'); return; }
+async function exportPDF() {
+  const m = currentReportMonth; const r = currentReport;
+  if (!m || !r) { toast('Generate a report first','err'); return; }
+
+  toast('Building PDF…', 'info');
+
+  // Load jsPDF from CDN if not present
+  if (!window.jspdf) {
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const PW = 210, PH = 297;
+  const ML = 18, MR = 18, MT = 18;
+  const CW = PW - ML - MR;
+  let y = MT;
+
+  // ── Colour palette ──
+  const C = {
+    ink:    [14,14,20],
+    dev:    [26,77,62],
+    pm:     [92,26,0],
+    gold:   [200,151,58],
+    red:    [192,57,43],
+    blue:   [21,101,192],
+    paper:  [245,242,237],
+    paper2: [237,233,225],
+    rule:   [217,211,200],
+    muted:  [122,112,101],
+    white:  [255,255,255],
+  };
+
   const mp = m.split('::')[0];
+  const fsh = m.includes('::') ? m.split('::')[1] : '';
   const label = new Date(mp+'-02').toLocaleString('default',{month:'long',year:'numeric'});
-  const ref = reflections[m]||{};
+  const ref = reflections[m] || {};
   const me = (() => {
-    const parts=m.split('::'); let l=entries.filter(e=>e.month===parts[0]);
-    if(parts[1]) l=l.filter(e=>e.sheetId===parts[1]); return l;
+    let l = entries.filter(e => e.month === mp);
+    if (fsh) l = l.filter(e => e.sheetId === fsh);
+    return l;
   })();
-  const lines = [
-    `FOOTPRINT MONTHLY REPORT — ${label}`, '='.repeat(52), '',
-    `OVERALL: ${r.overallGrade}  |  Dev: ${r.devGrade}  |  PM: ${r.pmGrade}  |  Consistency: ${r.consistencyGrade}`,
-    '', 'EXECUTIVE SUMMARY', r.executiveSummary, '', `"${r.oneThingToRemember}"`,
-    '', '─'.repeat(52),
-    'DEV STRENGTHS', ...(r.devStrengths||[]).map((s,i)=>`  ${i+1}. ${s}`),
-    '', 'DEV — IMPROVE', ...(r.devImprove||[]).map((s,i)=>`  ${i+1}. ${s}`),
-    '', 'PM STRENGTHS', ...(r.pmStrengths||[]).map((s,i)=>`  ${i+1}. ${s}`),
-    '', 'PM — IMPROVE', ...(r.pmImprove||[]).map((s,i)=>`  ${i+1}. ${s}`),
-    '', 'LEARNINGS', ...(r.topLearnings||[]).filter(Boolean).map((s,i)=>`  ${i+1}. ${s}`),
-    '', 'BLIND SPOTS', ...(r.blindSpots||[]).map((s,i)=>`  ${i+1}. ${s}`),
-    '', 'NEXT MONTH GOALS', ...(r.nextMonthGoals||[]).map((s,i)=>`  0${i+1}. ${s}`),
-    '', '─'.repeat(52), 'SELF REFLECTIONS', '',
-    `Most proud of : ${ref.proud||'—'}`, `Challenge     : ${ref.challenge||'—'}`,
-    `Dev focus     : ${ref.dev||'—'}`,   `PM mindset    : ${ref.pm||'—'}`,
-    `Note to self  : ${ref.note||'—'}`,
-    `Satisfaction  : ${'★'.repeat(ref.rating||0)}${'☆'.repeat(5-(ref.rating||0))}`,
-    `Would share?  : ${ref.share||'—'}`,
-    '', '─'.repeat(52), 'ALL ENTRIES',
-    ...me.map(e=>`[${e.date}] [${e.sheetName||'—'}] ${e.title} | ${(e.cats||[]).join(',')} | ${e.impact}`),
-    '', `Generated by Footprint Growth Portal · ${new Date().toLocaleDateString()}`
-  ].join('\n');
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([lines],{type:'text/plain'}));
-  a.download=`footprint-${mp}.txt`; a.click();
-  toast('Report exported!','ok');
+
+  const dN  = me.filter(e=>(e.cats||[]).includes('dev')).length;
+  const pN  = me.filter(e=>(e.cats||[]).includes('pm')).length;
+  const hN  = me.filter(e=>e.impact==='high').length;
+  const oN  = me.filter(e=>e.outcome).length;
+  const hrs = me.reduce((s,e)=>s+(parseFloat(e.effort)||0),0);
+  const daysActive = [...new Set(me.map(e=>e.date))].length;
+  const km = r.keyMetrics || {};
+
+  // ── Helpers ──
+  function setFill(col) { doc.setFillColor(...col); }
+  function setDraw(col) { doc.setDrawColor(...col); }
+  function setTxt(col)  { doc.setTextColor(...col); }
+  function setFont(style, size) {
+    doc.setFont('helvetica', style);
+    doc.setFontSize(size);
+  }
+
+  function newPage() {
+    doc.addPage();
+    y = MT;
+    // Light ruled lines on each page
+    doc.setDrawColor(...C.rule); doc.setLineWidth(0.1);
+    for (let ly = 10; ly < PH; ly += 7) doc.line(ML, ly, PW-MR, ly);
+    // Gold margin line
+    doc.setDrawColor(...C.gold); doc.setLineWidth(0.3);
+    doc.line(ML+6, 0, ML+6, PH);
+    doc.setLineWidth(0.2);
+  }
+
+  function checkPage(needed = 20) {
+    if (y + needed > PH - 15) newPage();
+  }
+
+  function wrappedText(text, x, maxW, lineH, align='left') {
+    const lines = doc.splitTextToSize(String(text||''), maxW);
+    doc.text(lines, x, y, { align });
+    y += lines.length * lineH;
+    return lines.length;
+  }
+
+  function sectionHeader(title, col = C.ink) {
+    checkPage(14);
+    y += 3;
+    setFill(col); doc.rect(ML, y-4, CW, 8, 'F');
+    setTxt(C.white); setFont('bold', 9);
+    doc.text(title.toUpperCase(), ML+3, y+0.5);
+    setTxt(C.ink);
+    y += 7;
+  }
+
+  function gradeBox(x, bw, grade, label2, sub, col) {
+    const bh = 22;
+    setFill([...col, ...[]]); doc.setFillColor(...col);
+    doc.roundedRect(x, y, bw, bh, 2, 2, 'F');
+    setTxt(C.white); setFont('bold', 18);
+    doc.text(grade, x + bw/2, y + 12, { align:'center' });
+    setFont('normal', 7); doc.setTextColor(255,255,255,160);
+    doc.text(label2.toUpperCase(), x + bw/2, y + 17.5, { align:'center' });
+    if (sub) {
+      setFont('normal', 6); setTxt([255,255,255]);
+      const lines = doc.splitTextToSize(sub, bw-4);
+      doc.text(lines[0]||'', x + bw/2, y + 21, { align:'center' });
+    }
+    setTxt(C.ink);
+  }
+
+  function scoreBar(label3, val, col, bx, barW) {
+    checkPage(12);
+    setFont('normal', 8); setTxt(C.muted);
+    doc.text(label3, bx, y);
+    const v = Math.min(100, Math.max(0, parseInt(val)||0));
+    const bh = 4; const fullW = barW - 35;
+    // background
+    setFill(C.paper2); doc.roundedRect(bx+30, y-3.5, fullW, bh, 1, 1, 'F');
+    // fill
+    doc.setFillColor(...col); doc.roundedRect(bx+30, y-3.5, fullW*(v/100), bh, 1, 1, 'F');
+    setFont('bold', 8); setTxt(col);
+    doc.text(String(v), bx+30+fullW+3, y);
+    setTxt(C.ink);
+    y += 8;
+  }
+
+  function bulletList(items, col, indent=2) {
+    (items||[]).forEach(item => {
+      checkPage(8);
+      setFill(col); doc.circle(ML+indent+1.5, y-1.2, 1.2, 'F');
+      setFont('normal', 9); setTxt(C.ink);
+      const lines = doc.splitTextToSize(String(item||''), CW - indent - 6);
+      doc.text(lines, ML+indent+5, y);
+      y += lines.length * 5 + 1;
+    });
+  }
+
+  function twoColBullets(leftItems, leftTitle, leftCol, rightItems, rightTitle, rightCol) {
+    checkPage(30);
+    const colW = (CW - 4) / 2;
+    const startY = y;
+    // Left
+    setFont('bold', 8); setTxt(leftCol);
+    doc.text(leftTitle, ML, y); y += 5;
+    const leftStart = y;
+    (leftItems||[]).forEach(item => {
+      doc.setFillColor(...leftCol); doc.circle(ML+1.5, y-1.2, 1.2, 'F');
+      setFont('normal', 8); setTxt(C.ink);
+      const lines = doc.splitTextToSize(String(item||''), colW-8);
+      doc.text(lines, ML+5, y);
+      y += lines.length * 4.5 + 1;
+    });
+    const leftEndY = y;
+    // Right (reset y to start)
+    y = startY;
+    const rx = ML + colW + 4;
+    setFont('bold', 8); setTxt(rightCol);
+    doc.text(rightTitle, rx, y); y += 5;
+    (rightItems||[]).forEach(item => {
+      doc.setFillColor(...rightCol); doc.circle(rx+1.5, y-1.2, 1.2, 'F');
+      setFont('normal', 8); setTxt(C.ink);
+      const lines = doc.splitTextToSize(String(item||''), colW-8);
+      doc.text(lines, rx+5, y);
+      y += lines.length * 4.5 + 1;
+    });
+    y = Math.max(leftEndY, y) + 3;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // PAGE 1 — COVER
+  // ══════════════════════════════════════════════════════════════
+
+  // Background paper colour
+  setFill(C.paper); doc.rect(0, 0, PW, PH, 'F');
+
+  // Ruled lines
+  doc.setLineWidth(0.1); setDraw(C.rule);
+  for (let ly = 10; ly < PH; ly += 7) doc.line(ML, ly, PW-MR, ly);
+
+  // Gold margin line
+  setDraw(C.gold); doc.setLineWidth(0.4);
+  doc.line(ML+6, 0, ML+6, PH);
+
+  // Dark header band
+  setFill(C.ink); doc.rect(0, 0, PW, 55, 'F');
+
+  // Title
+  setTxt(C.white); setFont('bold', 28);
+  doc.text('Footprint', ML+10, 22);
+  setFont('normal', 11); setTxt(C.gold);
+  doc.text('Monthly Report Card', ML+10, 31);
+  setFont('normal', 9); setTxt([180,170,160]);
+  doc.text(label, ML+10, 39);
+  doc.text(`${me.length} entries  ·  ${daysActive} active days  ·  ${hrs.toFixed(1)} hrs`, ML+10, 46);
+
+  // Overall grade stamp
+  setFont('bold', 42); setTxt(C.dev);
+  doc.text(r.overallGrade, PW-MR-8, 42, { align:'right' });
+  setFont('normal', 8); setTxt(C.gold);
+  doc.text('OVERALL', PW-MR-8, 50, { align:'right' });
+
+  y = 65;
+
+  // Grade boxes
+  const gw = (CW-9) / 4;
+  const gradeColors = { A:C.dev, B:C.blue, C:C.gold, D:C.red };
+  gradeBox(ML,        gw, r.devGrade,         'Dev Skills',   r.devGradeReason,   gradeColors[r.devGrade]||C.muted);
+  gradeBox(ML+gw+3,   gw, r.pmGrade,          'PM Thinking',  r.pmGradeReason,    gradeColors[r.pmGrade]||C.muted);
+  gradeBox(ML+2*gw+6, gw, r.consistencyGrade, 'Consistency',  `${daysActive} days`, gradeColors[r.consistencyGrade]||C.muted);
+  gradeBox(ML+3*gw+9, gw, r.overallGrade,     'Overall',      `${hN} high-impact`, gradeColors[r.overallGrade]||C.muted);
+  y += 27;
+
+  // Stats row
+  const stats = [
+    {n:String(me.length), l:'Entries',    col:C.ink},
+    {n:String(dN),        l:'Dev',        col:C.dev},
+    {n:String(pN),        l:'PM',         col:C.pm},
+    {n:String(hN),        l:'High Impact',col:C.red},
+    {n:String(oN),        l:'Outcomes',   col:C.muted},
+    {n:hrs>0?hrs.toFixed(1):'—', l:'Hours', col:C.gold},
+  ];
+  const sw = CW / stats.length;
+  stats.forEach((s,i) => {
+    const sx = ML + i*sw;
+    doc.setFillColor(...s.col); doc.rect(sx, y, 2.5, 12, 'F');
+    setFont('bold', 14); setTxt(s.col);
+    doc.text(s.n, sx+5, y+8);
+    setFont('normal', 7); setTxt(C.muted);
+    doc.text(s.l.toUpperCase(), sx+5, y+13);
+  });
+  y += 18;
+
+  // Quality scores
+  if (km.focusScore !== undefined) {
+    setFont('bold', 9); setTxt(C.muted);
+    doc.text('QUALITY SCORES', ML, y); y += 5;
+    const hw = CW/2 - 3;
+    const sy = y;
+    scoreBar('Focus',       km.focusScore,       C.dev,  ML,       hw);
+    scoreBar('Depth',       km.depthScore,        C.blue, ML,       hw);
+    y = sy;
+    scoreBar('Outcomes',    km.outcomeScore,      C.gold, ML+hw+6,  hw);
+    scoreBar('Consistency', km.consistencyScore,  C.pm,   ML+hw+6,  hw);
+    y += 3;
+  }
+
+  // Executive Summary
+  sectionHeader('Executive Summary', C.dev);
+  setFont('normal', 9); setTxt(C.ink);
+  y += 1;
+  wrappedText(r.executiveSummary, ML, CW, 5.5);
+  y += 2;
+  if (r.oneThingToRemember) {
+    checkPage(14);
+    setFill(C.dev); doc.roundedRect(ML, y, CW, 12, 2, 2, 'F');
+    setFont('italic', 9); setTxt(C.white);
+    const qlines = doc.splitTextToSize(`"${r.oneThingToRemember}"`, CW-8);
+    doc.text(qlines, ML+4, y+4.5);
+    y += Math.max(12, qlines.length*5) + 3;
+  }
+  setTxt(C.ink);
+
+  // Deep Analysis
+  if (r.deepAnalysis) {
+    sectionHeader('Deep Analysis', C.blue);
+    setFont('normal', 9); setTxt(C.ink);
+    wrappedText(r.deepAnalysis, ML, CW, 5.5);
+    y += 2;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // PAGE 2 — STRENGTHS & IMPROVEMENTS
+  // ══════════════════════════════════════════════════════════════
+  newPage();
+
+  setFill(C.ink); doc.rect(0, 0, PW, 14, 'F');
+  setTxt(C.white); setFont('bold', 11); doc.text('Strengths & Improvements', ML+10, 9.5);
+  setFont('normal', 8); setTxt(C.gold); doc.text(label, PW-MR, 9.5, {align:'right'});
+  y = 20;
+
+  twoColBullets(r.devStrengths, '🖥  Dev — Strengths', C.dev,   r.devImprove,  '🖥  Dev — Improve',  C.red);
+  y += 4;
+  twoColBullets(r.pmStrengths,  '📦 PM — Strengths',  C.pm,    r.pmImprove,   '📦 PM — Improve',   C.red);
+  y += 4;
+  twoColBullets(r.topLearnings, '📚 Top Learnings',   C.gold,  r.blindSpots,  '⚠  Blind Spots',    C.pm);
+  y += 4;
+
+  // Weekly rhythm
+  if (r.weeklyRhythm) {
+    sectionHeader('Weekly Rhythm', C.muted);
+    setFont('normal', 9); setTxt(C.ink);
+    wrappedText(r.weeklyRhythm, ML, CW, 5.5); y += 2;
+  }
+
+  // Impact analysis
+  if (r.impactAnalysis) {
+    sectionHeader('Impact Analysis', C.red);
+    setFont('normal', 9); setTxt(C.ink);
+    wrappedText(r.impactAnalysis, ML, CW, 5.5); y += 2;
+  }
+
+  // Career insight
+  if (r.careerInsight) {
+    checkPage(30);
+    setFill(C.gold); doc.roundedRect(ML, y, CW, 2, 0, 0, 'F');
+    y += 5;
+    sectionHeader('Career Insight', C.gold);
+    setFont('normal', 9); setTxt(C.ink);
+    wrappedText(r.careerInsight, ML, CW, 5.5); y += 2;
+  }
+
+  // Next month goals
+  sectionHeader('Next Month Goals', C.dev);
+  (r.nextMonthGoals||[]).forEach((g,i) => {
+    checkPage(10);
+    setFill(C.dev); doc.roundedRect(ML, y-4, 6, 6, 1, 1, 'F');
+    setFont('bold', 8); setTxt(C.white);
+    doc.text(`0${i+1}`, ML+3, y+0.2, {align:'center'});
+    setFont('normal', 9); setTxt(C.ink);
+    const lines = doc.splitTextToSize(String(g||''), CW-10);
+    doc.text(lines, ML+9, y);
+    y += lines.length * 5 + 3;
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // PAGE 3 — REFLECTIONS + ENTRY LOG
+  // ══════════════════════════════════════════════════════════════
+  newPage();
+  setFill(C.pm); doc.rect(0, 0, PW, 14, 'F');
+  setTxt(C.white); setFont('bold', 11); doc.text('Self Reflections', ML+10, 9.5);
+  setFont('normal', 8); setTxt([255,200,180]); doc.text(label, PW-MR, 9.5, {align:'right'});
+  y = 20;
+
+  const reflFields = [
+    ['Most Proud Of',           ref.proud],
+    ['Biggest Challenge',       ref.challenge],
+    ['As a Developer, Focus On',ref.dev],
+    ['As a PM Thinker, I Need To', ref.pm],
+    ['Note to Myself',          ref.note],
+  ];
+  reflFields.forEach(([lbl, val]) => {
+    if (!val) return;
+    checkPage(16);
+    setFont('bold', 8); setTxt(C.pm);
+    doc.text(lbl.toUpperCase(), ML, y); y += 4;
+    setFill(C.paper2); doc.roundedRect(ML, y, CW, 1, 0, 0, 'F');
+    setFont('normal', 9); setTxt(C.ink);
+    const lines = doc.splitTextToSize(val, CW-4);
+    doc.text(lines, ML+2, y+4);
+    y += lines.length * 5 + 5;
+  });
+
+  if (ref.rating) {
+    checkPage(10);
+    setFont('bold', 8); setTxt(C.pm); doc.text('SATISFACTION', ML, y); y += 5;
+    setFont('normal', 14); setTxt(C.gold);
+    doc.text('★'.repeat(ref.rating) + '☆'.repeat(5-ref.rating), ML, y); y += 8;
+  }
+
+  // Entry log
+  sectionHeader('Complete Entry Log', C.ink);
+  setFont('bold', 7); setTxt(C.muted);
+  doc.text('Date', ML, y);
+  doc.text('Title', ML+18, y);
+  doc.text('Category', ML+100, y);
+  doc.text('Impact', ML+130, y);
+  doc.text('Hrs', ML+150, y);
+  y += 2;
+  setDraw(C.rule); doc.setLineWidth(0.2);
+  doc.line(ML, y, PW-MR, y); y += 4;
+
+  const sorted = [...me].sort((a,b)=>a.date.localeCompare(b.date));
+  sorted.forEach((e,i) => {
+    checkPage(8);
+    if (i % 2 === 0) { setFill([248,246,242]); doc.rect(ML, y-3, CW, 6, 'F'); }
+    setFont('normal', 7.5); setTxt(C.muted);
+    doc.text(e.date, ML, y);
+    setTxt(C.ink);
+    const titleLines = doc.splitTextToSize(e.title||'', 78);
+    doc.text(titleLines[0], ML+18, y);
+    const catStr = (e.cats||[]).join('+') || '—';
+    setTxt(C.dev);
+    doc.text(catStr.slice(0,18), ML+100, y);
+    const impCol = e.impact==='high'?C.red : e.impact==='medium'?C.dev : C.muted;
+    setTxt(impCol); doc.text(e.impact||'—', ML+130, y);
+    setTxt(C.muted); doc.text(e.effort?String(e.effort):'—', ML+150, y);
+    y += 6;
+    if (e.outcome) {
+      setFont('italic', 7); setTxt(C.dev);
+      const olines = doc.splitTextToSize('→ '+e.outcome, CW-20);
+      doc.text(olines[0], ML+18, y);
+      y += 5;
+    }
+  });
+
+  // Footer on last page
+  y = PH - 12;
+  setDraw(C.rule); doc.line(ML, y, PW-MR, y);
+  setFont('normal', 7.5); setTxt(C.muted);
+  doc.text(`Generated by Footprint Growth Portal · ${new Date().toLocaleDateString('en-IN')}`, ML, y+5);
+  setTxt(C.gold);
+  doc.text('footprint · growth portal', PW-MR, y+5, {align:'right'});
+
+  doc.save(`footprint-report-${mp}.pdf`);
+  toast('PDF saved!', 'ok');
 }
 
 function deleteReport() {
