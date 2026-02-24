@@ -1841,27 +1841,9 @@ async function exportPDF() {
   }
 
   function drawPageBase() {
-    // Warm parchment background - fills entire page
-    setFill(C.paper);
+    // Plain white background
+    setFill(C.white);
     doc.rect(0, 0, PW, PH, 'F');
-    // Slightly lighter writing area
-    setFill([249, 246, 241]);
-    doc.rect(ML + 12, 0, PW - ML - MR - 12, PH, 'F');
-    // Horizontal ruled lines
-    for (let i = 0, ly = 7; ly < PH; ly += 6.5, i++) {
-      doc.setLineWidth(i % 4 === 0 ? 0.22 : 0.1);
-      setDraw(i % 4 === 0 ? [190, 175, 155] : C.rule);
-      doc.line(0, ly, PW, ly);
-    }
-    // Gold margin line (bold)
-    doc.setLineWidth(0.6);
-    setDraw(C.gold);
-    doc.line(ML + 8, 0, ML + 8, PH);
-    // Second thinner margin
-    doc.setLineWidth(0.15);
-    setDraw([220, 185, 105]);
-    doc.line(ML + 11, 0, ML + 11, PH);
-    doc.setLineWidth(0.2);
   }
 
   function newPage() {
