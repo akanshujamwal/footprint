@@ -21,6 +21,8 @@
   --text: #1a1a24;
   --muted: #7a7065;
   --shadow: rgba(14,14,20,0.08);
+  --sync-pull: #1565c0;
+  --sync-pull-light: #e3f0fd;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: var(--paper); color: var(--text); font-family: 'DM Sans', sans-serif; min-height: 100vh; }
@@ -69,11 +71,41 @@ body::after {
 .tab:hover:not(.active) { color: var(--text); }
 
 /* ACTIVE SHEET BAR */
-.active-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 10px 16px; background: #fff; border: 1.5px solid var(--rule); border-radius: 6px; font-size: 13px; }
+.active-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 10px 16px; background: #fff; border: 1.5px solid var(--rule); border-radius: 6px; font-size: 13px; flex-wrap: wrap; }
 .active-bar .sh-cdot { width: 10px; height: 10px; }
 .ab-name { font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 500; }
 .ab-info { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; margin-left: auto; }
 .ab-status { display: flex; align-items: center; gap: 5px; font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); }
+
+/* SYNC PULL BANNER */
+.sync-banner {
+  display: none; align-items: center; gap: 10px; margin-bottom: 16px;
+  padding: 10px 16px; background: var(--sync-pull-light);
+  border: 1.5px solid rgba(21,101,192,0.3); border-radius: 6px;
+  font-family: 'DM Mono', monospace; font-size: 12px; color: var(--sync-pull);
+  animation: pulseIn 0.3s ease;
+}
+.sync-banner.visible { display: flex; }
+@keyframes pulseIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
+.sync-banner-icon { font-size: 16px; flex-shrink: 0; }
+.sync-banner-txt { flex: 1; }
+.sync-banner-txt strong { display: block; margin-bottom: 2px; }
+.sync-banner-txt span { font-size: 10px; color: rgba(21,101,192,0.7); }
+.sync-banner-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.btn-pull { font-family: 'DM Mono', monospace; font-size: 10px; font-weight: 600; padding: 5px 12px; border-radius: 4px; cursor: pointer; border: 1.5px solid var(--sync-pull); background: var(--sync-pull); color: #fff; letter-spacing: 0.5px; transition: all 0.15s; }
+.btn-pull:hover { opacity: 0.85; }
+.btn-pull-dismiss { font-family: 'DM Mono', monospace; font-size: 10px; padding: 5px 10px; border-radius: 4px; cursor: pointer; border: 1.5px solid rgba(21,101,192,0.3); background: transparent; color: var(--sync-pull); transition: all 0.15s; }
+.btn-pull-dismiss:hover { background: rgba(21,101,192,0.08); }
+
+/* SYNC STATUS INDICATOR */
+.sync-status-row {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+  font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted);
+}
+.sync-pulse { width: 8px; height: 8px; border-radius: 50%; background: #ccc; flex-shrink: 0; }
+.sync-pulse.active { background: #27ae60; animation: blink 2s ease-in-out infinite; }
+.sync-pulse.syncing { background: var(--gold); animation: blink 0.5s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
 /* FORMS */
 .log-card { background: #fff; border: 1.5px solid var(--rule); border-radius: 6px; padding: 24px 28px; margin-bottom: 20px; box-shadow: 0 2px 10px var(--shadow); }
@@ -112,6 +144,8 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
 .btn-danger:hover { background: #fdecea; }
 .btn-sm { font-size: 10px; padding: 5px 10px; }
 .btn-edit { background: transparent; color: var(--dev); border-color: #a8d8c8; font-size: 10px; padding: 5px 10px; }
+.btn-sync-now { background: var(--sync-pull-light); color: var(--sync-pull); border-color: rgba(21,101,192,0.35); font-size: 10px; padding: 5px 11px; }
+.btn-sync-now:hover { background: rgba(21,101,192,0.12); }
 .btn-row { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; align-items: center; }
 .save-hint { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); }
 
@@ -139,6 +173,7 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
 .entry.t-dev   { border-left-color: var(--dev); }
 .entry.t-pm    { border-left-color: var(--pm); }
 .entry.t-learn { border-left-color: var(--gold); }
+.entry.t-sheet-modified { border-left-color: var(--sync-pull); background: #fafcff; }
 .entry-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .entry-title { font-family: 'Playfair Display', serif; font-size: 15px; font-weight: 700; margin-bottom: 3px; }
 .entry-desc { font-size: 13px; color: var(--muted); line-height: 1.6; margin-bottom: 7px; }
@@ -151,11 +186,13 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
 .chip-hi  { background: #fdecea; color: var(--red); }
 .chip-med { background: #e8f5e9; color: #2e7d32; }
 .chip-lo  { background: var(--paper2); color: var(--muted); }
+.chip-sheet-src { background: var(--sync-pull-light); color: var(--sync-pull); }
 .entry-outcome { margin-top: 7px; padding: 5px 9px; background: var(--dev-light); border-radius: 3px; font-size: 11px; color: var(--dev); font-family: 'DM Mono', monospace; }
 .entry-outcome::before { content: '→ '; }
 .entry-actions { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
 .sync-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-left: 3px; }
 .sync-dot.ok   { background: #27ae60; } .sync-dot.pend { background: var(--gold); }
+.sync-dot.sheet { background: var(--sync-pull); }
 .empty { text-align: center; padding: 56px 20px; color: var(--muted); }
 .empty-icon { font-size: 32px; margin-bottom: 10px; }
 .empty h3 { font-family: 'Playfair Display', serif; font-size: 19px; color: var(--text); margin-bottom: 5px; }
@@ -171,6 +208,17 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
 .modal-title { font-family: 'Playfair Display', serif; font-size: 21px; font-weight: 800; }
 .modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: var(--muted); padding: 0 4px; line-height: 1; }
 
+/* CONFLICT MODAL */
+.conflict-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; font-size: 13px; }
+.conflict-side { border: 1.5px solid var(--rule); border-radius: 6px; padding: 12px 14px; }
+.conflict-side.local { border-color: var(--gold); background: var(--gold-light); }
+.conflict-side.remote { border-color: var(--sync-pull); background: var(--sync-pull-light); }
+.conflict-label { font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 7px; }
+.conflict-label.l { color: var(--gold); }
+.conflict-label.r { color: var(--sync-pull); }
+.conflict-field { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.conflict-val { font-size: 13px; color: var(--text); font-weight: 500; }
+
 /* SHEET LIST in manage modal */
 .sheet-list-item { display: flex; align-items: center; gap: 12px; padding: 13px 16px; background: #fff; border: 1.5px solid var(--rule); border-radius: 6px; margin-bottom: 8px; transition: all 0.15s; }
 .sheet-list-item.is-active { border-color: var(--dev); }
@@ -184,6 +232,16 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
 .add-form h4 { font-family: 'Playfair Display', serif; font-size: 16px; font-weight: 700; margin-bottom: 12px; }
 .add-form p { font-size: 12px; color: var(--muted); margin-bottom: 12px; line-height: 1.7; }
 .add-form code { font-family: 'DM Mono', monospace; font-size: 11px; background: rgba(200,151,58,0.18); padding: 1px 5px; border-radius: 3px; color: var(--pm); }
+
+/* Sync settings in manage modal */
+.sync-settings { background: var(--sync-pull-light); border: 1.5px solid rgba(21,101,192,0.25); border-radius: 6px; padding: 16px 18px; margin-top: 14px; }
+.sync-settings h4 { font-family: 'Playfair Display', serif; font-size: 15px; font-weight: 700; margin-bottom: 10px; color: var(--sync-pull); }
+.sync-opt-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.sync-opt-label { font-size: 13px; }
+.sync-opt-label small { display: block; font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); margin-top: 2px; }
+.toggle-wrap { display: flex; gap: 6px; flex-shrink: 0; }
+.toggle-btn { font-family: 'DM Mono', monospace; font-size: 10px; padding: 4px 10px; border-radius: 3px; cursor: pointer; border: 1.5px solid var(--rule); background: #fff; color: var(--muted); transition: all 0.15s; }
+.toggle-btn.on { background: var(--sync-pull); color: #fff; border-color: var(--sync-pull); }
 
 /* Color swatches */
 .swatches { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
@@ -243,6 +301,7 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
 .toast.show { transform: translateY(0); opacity: 1; }
 .toast.ok  { background: var(--dev); }
 .toast.err { background: var(--red); }
+.toast.info { background: var(--sync-pull); }
 .panel { display: none; } .panel.active { display: block; }
 .spin { width: 32px; height: 32px; border: 3px solid var(--rule); border-top-color: var(--dev); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 12px; }
 @keyframes spin { to{transform:rotate(360deg)} }
@@ -250,6 +309,9 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
 .loading-txt { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--muted); }
 .loading-txt::after { content: '...'; animation: ell 1.5s infinite; }
 @keyframes ell { 0%{content:'.'} 33%{content:'..'} 66%{content:'...'} }
+
+/* Last sync time */
+.last-sync-info { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -277,6 +339,20 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
 <!-- LOG PANEL -->
 <div id="panel-log" class="panel active">
   <div id="logBar" class="active-bar" style="display:none"></div>
+
+  <!-- Sync changes banner (shown when sheet has new/modified rows) -->
+  <div class="sync-banner" id="syncBanner">
+    <div class="sync-banner-icon">🔄</div>
+    <div class="sync-banner-txt">
+      <strong id="syncBannerTitle">Changes detected in Google Sheet</strong>
+      <span id="syncBannerSub">New or edited rows found that aren't in your local app yet.</span>
+    </div>
+    <div class="sync-banner-actions">
+      <button class="btn-pull" onclick="applySheetChanges()">↓ Pull Changes</button>
+      <button class="btn-pull-dismiss" onclick="dismissSyncBanner()">Dismiss</button>
+    </div>
+  </div>
+
   <div class="log-card">
     <div class="section-label">New Entry</div>
     <div class="frow c2">
@@ -316,7 +392,9 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
     <div class="btn-row">
       <button class="btn btn-primary" onclick="addEntry()">+ Add Entry</button>
       <button class="btn btn-outline" onclick="clearForm()">Clear</button>
+      <button class="btn btn-sync-now" id="btnSyncNow" onclick="checkSheetChanges(true)" style="display:none">↓ Check Sheet</button>
       <span class="save-hint" id="saveHint"></span>
+      <span class="last-sync-info" id="lastSyncInfo"></span>
     </div>
   </div>
 </div>
@@ -346,7 +424,8 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
       </select>
     </div>
     <div style="align-self:flex-end;display:flex;gap:7px">
-      <button class="btn btn-outline btn-sm" id="syncBtn" onclick="syncAllPending()" style="display:none">↑ Sync All</button>
+      <button class="btn btn-outline btn-sm" id="syncBtn" onclick="syncAllPending()" style="display:none">↑ Push Pending</button>
+      <button class="btn btn-sync-now btn-sm" id="histPullBtn" onclick="checkSheetChanges(true)" style="display:none">↓ Pull Sheet</button>
     </div>
     <div style="align-self:flex-end;font-family:DM Mono,monospace;font-size:11px;color:var(--muted);padding-bottom:2px" id="histCount"></div>
   </div>
@@ -383,6 +462,46 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
       <button class="modal-close" onclick="closeMgModal()">×</button>
     </div>
     <div id="sheetListEl"></div>
+
+    <!-- ── SHEET SYNC SETTINGS ── -->
+    <div class="sync-settings" id="syncSettingsBox">
+      <h4>🔄 Two-Way Sync Settings</h4>
+      <div class="sync-opt-row">
+        <div class="sync-opt-label">
+          Auto-check for sheet changes
+          <small>Polls your Google Sheet at a set interval and notifies you when rows are added or edited directly in the sheet</small>
+        </div>
+        <div class="toggle-wrap">
+          <button class="toggle-btn" id="autoSyncToggle" onclick="toggleAutoSync()">OFF</button>
+        </div>
+      </div>
+      <div class="sync-opt-row" id="intervalRow" style="display:none">
+        <div class="sync-opt-label">
+          Poll interval
+          <small>How often to check the Google Sheet for changes</small>
+        </div>
+        <div class="field" style="max-width:150px;margin:0">
+          <select id="pollInterval" onchange="saveSyncSettings()">
+            <option value="30000">Every 30 sec</option>
+            <option value="60000" selected>Every 1 min</option>
+            <option value="120000">Every 2 min</option>
+            <option value="300000">Every 5 min</option>
+          </select>
+        </div>
+      </div>
+      <div class="sync-opt-row">
+        <div class="sync-opt-label">
+          Conflict resolution strategy
+          <small>What to do when the same entry has been edited both locally and in the sheet</small>
+        </div>
+        <div class="toggle-wrap">
+          <button class="toggle-btn ${cfg.syncConflict==='sheet'?'on':''}" id="conflictLocal" onclick="setConflict('local')"  style="font-size:9px">Keep Local</button>
+          <button class="toggle-btn ${cfg.syncConflict==='sheet'?'on':''}" id="conflictSheet" onclick="setConflict('sheet')"  style="font-size:9px">Keep Sheet</button>
+          <button class="toggle-btn"                                        id="conflictAsk"   onclick="setConflict('ask')"    style="font-size:9px">Always Ask</button>
+        </div>
+      </div>
+    </div>
+
     <div class="add-form">
       <h4>+ Connect a New Sheet</h4>
       <p>Create a blank Google Sheet, then copy its ID from the URL:<br>
@@ -471,15 +590,37 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
   </div>
 </div>
 
+<!-- CONFLICT RESOLUTION MODAL -->
+<div class="modal-backdrop" id="conflictModal" style="z-index:300">
+  <div class="modal modal-sm">
+    <div class="modal-hdr">
+      <div class="modal-title">⚡ Sync Conflict</div>
+      <button class="modal-close" onclick="resolveConflict('skip')">×</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.7">
+      This entry was modified both in the app and in Google Sheets. Which version should be kept?
+    </p>
+    <div class="conflict-row" id="conflictCompare"></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="resolveConflict('local')">Keep Local Version</button>
+      <button class="btn btn-pull" onclick="resolveConflict('sheet')">Keep Sheet Version</button>
+      <button class="btn btn-outline" onclick="resolveConflict('skip')">Skip for Now</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let entries     = JSON.parse(localStorage.getItem('fp_entries') || '[]');
-let cfg         = JSON.parse(localStorage.getItem('fp_cfg')     || '{"sheets":[],"activeSheetId":null,"clientId":null}');
+let cfg         = JSON.parse(localStorage.getItem('fp_cfg')     || '{"sheets":[],"activeSheetId":null,"clientId":null,"autoSync":false,"pollInterval":60000,"syncConflict":"ask"}');
 let reflections = JSON.parse(localStorage.getItem('fp_refl')    || '{}');
 
-if (!cfg.sheets) cfg.sheets = [];
+if (!cfg.sheets)       cfg.sheets = [];
+if (!cfg.pollInterval) cfg.pollInterval = 60000;
+if (!cfg.syncConflict) cfg.syncConflict = 'ask';
+if (cfg.autoSync === undefined) cfg.autoSync = false;
 
 let gapiReady  = false;
 let signedIn   = false;
@@ -488,6 +629,13 @@ let newColor   = '#1a4d3e';
 let currentRating = 0;
 let currentReportMonth = null;
 let currentReport = null;
+
+// Pull-sync state
+let pendingSheetChanges = [];  // rows fetched from sheet not yet in local
+let pollTimer = null;
+let lastPollTime = null;
+let conflictQueue = [];
+let currentConflict = null;
 
 // ─── UTILS ────────────────────────────────────────────────────────────────────
 function save()         { localStorage.setItem('fp_entries', JSON.stringify(entries)); }
@@ -499,12 +647,11 @@ function sheetById(id)  { return cfg.sheets.find(s => s.id === id) || null; }
 function toast(msg, type='') {
   const t = document.getElementById('toast');
   t.textContent = msg; t.className = 'toast show ' + type;
-  setTimeout(() => t.className = 'toast', 3000);
+  setTimeout(() => t.className = 'toast', 3200);
 }
 
 const CAT_SEL = { dev:'sel-dev', pm:'sel-pm', learn:'sel-learn' };
 function catSelCls(cat) { return CAT_SEL[cat] || 'sel-other'; }
-
 function toggleCat(el) { el.classList.toggle(catSelCls(el.dataset.cat)); }
 function getSelCats(cid) {
   return [...document.querySelectorAll(`#${cid} .cat-chip`)].filter(c => c.className.match(/sel-/)).map(c => c.dataset.cat);
@@ -514,6 +661,33 @@ function setSelCats(cid, cats) {
     ['sel-dev','sel-pm','sel-learn','sel-other'].forEach(cl => c.classList.remove(cl));
     if ((cats||[]).includes(c.dataset.cat)) c.classList.add(catSelCls(c.dataset.cat));
   });
+}
+
+// ─── ROW → ENTRY PARSER ──────────────────────────────────────────────────────
+// Sheet columns: Date(0) Title(1) Desc(2) Cats(3) Impact(4) Outcome(5) Effort(6) Month(7) ID(8) Created(9) SheetName(10)
+function rowToEntry(row, sheetMeta) {
+  const rawId = (row[8] || '').toString().trim();
+  // IDs from app are numeric timestamps; rows added directly in sheet won't have one
+  const id = rawId && !isNaN(rawId) ? parseInt(rawId) : null;
+  const date = (row[0] || '').trim();
+  const month = date.length >= 7 ? date.slice(0,7) : (row[7]||'').trim();
+  return {
+    id,
+    _sheetRowId: rawId || null,   // keep original string for matching
+    date,
+    title: (row[1] || '').trim(),
+    desc: (row[2] || '').trim(),
+    cats: (row[3] || '').split(',').map(s=>s.trim()).filter(Boolean),
+    impact: (row[4] || 'medium').trim().toLowerCase(),
+    outcome: (row[5] || '').trim(),
+    effort: (row[6] || '').trim(),
+    month,
+    synced: true,
+    fromSheet: true,
+    sheetId: sheetMeta.id,
+    sheetName: sheetMeta.name,
+    created: (row[9] || new Date().toISOString()).trim()
+  };
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
@@ -526,6 +700,7 @@ function setSelCats(cid, cats) {
   renderSwitcher();
   renderDropdowns();
   updateLogBar();
+  applySyncSettingsUI();
   if (cfg.clientId) loadGapi();
 })();
 
@@ -560,8 +735,10 @@ function setActive(id) {
 function updateLogBar() {
   const bar = document.getElementById('logBar');
   const s = activeSheet();
-  if (!s) { bar.style.display = 'none'; return; }
+  const btnSyncNow = document.getElementById('btnSyncNow');
+  if (!s) { bar.style.display = 'none'; if(btnSyncNow) btnSyncNow.style.display='none'; return; }
   bar.style.display = 'flex';
+  if(btnSyncNow) btnSyncNow.style.display = signedIn ? '' : 'none';
   const total   = entries.filter(e => e.sheetId === s.id).length;
   const pending = entries.filter(e => e.sheetId === s.id && !e.synced).length;
   bar.innerHTML = `
@@ -570,8 +747,17 @@ function updateLogBar() {
     <span class="ab-info">${total} entries${pending?` · ${pending} pending`:''}</span>
     <span class="ab-status">
       <span class="sh-sdot ${signedIn?'ok':'off'}"></span>
-      ${signedIn?'Syncing to Google Sheets':'Not connected — entries saved locally'}
+      ${signedIn?'Two-way sync active':'Not connected — entries saved locally'}
     </span>`;
+  updateLastSyncLabel();
+}
+
+function updateLastSyncLabel() {
+  const el = document.getElementById('lastSyncInfo');
+  if (!el) return;
+  if (!lastPollTime) { el.textContent = ''; return; }
+  const diff = Math.round((Date.now() - lastPollTime)/1000);
+  el.textContent = `Last checked: ${diff < 60 ? diff+'s ago' : Math.round(diff/60)+'m ago'}`;
 }
 
 function renderDropdowns() {
@@ -586,6 +772,7 @@ function renderDropdowns() {
 // ─── MANAGE SHEETS MODAL ──────────────────────────────────────────────────────
 function openMgModal() {
   renderSheetList();
+  applySyncSettingsUI();
   if (cfg.clientId) document.getElementById('cfgClientId').value = cfg.clientId;
   document.getElementById('authStatus').textContent = signedIn ? '✓ Connected' : cfg.clientId ? 'Connecting…' : '';
   document.getElementById('mgModal').classList.add('open');
@@ -618,46 +805,294 @@ function renderSheetList() {
   }).join('');
 }
 
-function pickColor(el) {
-  document.querySelectorAll('.swatch').forEach(s => s.classList.remove('sel'));
-  el.classList.add('sel'); newColor = el.dataset.color;
+// ─── SYNC SETTINGS UI ─────────────────────────────────────────────────────────
+function applySyncSettingsUI() {
+  const autoBtn = document.getElementById('autoSyncToggle');
+  if (autoBtn) {
+    autoBtn.textContent = cfg.autoSync ? 'ON' : 'OFF';
+    autoBtn.classList.toggle('on', cfg.autoSync);
+  }
+  const intRow = document.getElementById('intervalRow');
+  if (intRow) intRow.style.display = cfg.autoSync ? 'flex' : 'none';
+  const intEl = document.getElementById('pollInterval');
+  if (intEl) intEl.value = String(cfg.pollInterval || 60000);
+  // conflict buttons
+  ['conflictLocal','conflictSheet','conflictAsk'].forEach(id => {
+    const b = document.getElementById(id); if(!b) return;
+    const strategy = {conflictLocal:'local',conflictSheet:'sheet',conflictAsk:'ask'}[id];
+    b.classList.toggle('on', cfg.syncConflict === strategy);
+  });
 }
 
-function addNewSheet() {
-  const name    = document.getElementById('nsName').value.trim();
-  const sheetId = document.getElementById('nsSheetId').value.trim();
-  if (!name)    { toast('Enter a sheet name','err'); return; }
-  if (!sheetId) { toast('Enter a Google Sheet ID','err'); return; }
-  const sheet = { id: uid(), name, sheetId, color: newColor, tab: 'Sheet1' };
-  cfg.sheets.push(sheet);
-  if (!cfg.activeSheetId) cfg.activeSheetId = sheet.id;
+function toggleAutoSync() {
+  cfg.autoSync = !cfg.autoSync; saveCfg();
+  applySyncSettingsUI();
+  if (cfg.autoSync && signedIn) startPolling();
+  else stopPolling();
+}
+
+function saveSyncSettings() {
+  cfg.pollInterval = parseInt(document.getElementById('pollInterval').value) || 60000;
   saveCfg();
-  document.getElementById('nsName').value = '';
-  document.getElementById('nsSheetId').value = '';
-  renderSheetList(); renderSwitcher(); renderDropdowns(); updateLogBar();
-  if (signedIn) ensureHeaders(sheet);
-  toast(`"${name}" connected!`, 'ok');
+  if (cfg.autoSync && signedIn) { stopPolling(); startPolling(); }
 }
 
-function removeSheet(id) {
-  const s = sheetById(id); if (!s) return;
-  const n = entries.filter(e=>e.sheetId===id).length;
-  if (!confirm(`Remove sheet "${s.name}"?\n\n${n>0?n+' entries will keep their local data but won\'t sync.\n\n':''}The Google Sheet itself will NOT be deleted.`)) return;
-  cfg.sheets = cfg.sheets.filter(sh => sh.id !== id);
-  if (cfg.activeSheetId === id) cfg.activeSheetId = cfg.sheets[0]?.id || null;
-  saveCfg();
-  renderSheetList(); renderSwitcher(); renderDropdowns(); updateLogBar();
-  toast(`"${s.name}" removed`);
+function setConflict(strategy) {
+  cfg.syncConflict = strategy; saveCfg(); applySyncSettingsUI();
 }
 
-function saveClientId() {
-  const cid = document.getElementById('cfgClientId').value.trim();
-  if (!cid) { toast('Enter your Client ID','err'); return; }
-  cfg.clientId = cid; saveCfg();
-  document.getElementById('authStatus').textContent = 'Connecting…';
-  // Reset state so loadGapi reinitialises cleanly
-  tokenClient = null; accessToken = null; gapiReady = false; signedIn = false;
-  loadGapi();
+// ─── POLLING ──────────────────────────────────────────────────────────────────
+function startPolling() {
+  stopPolling();
+  if (!cfg.autoSync || !signedIn) return;
+  pollTimer = setInterval(() => checkSheetChanges(false), cfg.pollInterval);
+  checkSheetChanges(false);
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+// ─── CHECK SHEET FOR CHANGES (PULL) ──────────────────────────────────────────
+async function checkSheetChanges(manual = false) {
+  if (!signedIn) {
+    if (manual) toast('Connect to Google Sheets first','err');
+    return;
+  }
+  const sheetsToCheck = cfg.sheets.filter(s => s.sheetId);
+  if (!sheetsToCheck.length) {
+    if (manual) toast('No Google Sheet connected','err');
+    return;
+  }
+
+  if (manual) toast('🔄 Checking for sheet changes…', 'info');
+
+  let newRows = [], modifiedRows = [];
+
+  for (const sh of sheetsToCheck) {
+    try {
+      const res = await gapi.client.sheets.spreadsheets.values.get({
+        spreadsheetId: sh.sheetId,
+        range: `${sh.tab||'Sheet1'}!A2:K`
+      });
+      const rows = (res.result.values || []).filter(r => r[1]); // must have a title
+      for (const row of rows) {
+        const rawId = (row[8]||'').toString().trim();
+        const title = (row[1]||'').trim();
+        const date  = (row[0]||'').trim();
+        if (!title || !date) continue;
+
+        if (rawId && !isNaN(rawId)) {
+          // Row has a numeric app ID — check if it matches a local entry
+          const localEntry = entries.find(e => String(e.id) === rawId && e.sheetId === sh.id);
+          if (localEntry) {
+            // Compare fields to detect edits in the sheet
+            if (hasSheetModified(localEntry, row)) {
+              modifiedRows.push({ row, sh, localEntry });
+            }
+            // else: in sync, nothing to do
+          } else {
+            // ID exists in sheet but not locally (could have been from a different device)
+            newRows.push({ row, sh });
+          }
+        } else {
+          // No app ID — row was added directly in the sheet
+          // Check if we already imported it (match by title+date+sheet)
+          const alreadyImported = entries.find(e =>
+            e.sheetId === sh.id &&
+            e.date === date &&
+            e.title.toLowerCase() === title.toLowerCase() &&
+            e.fromSheet
+          );
+          if (!alreadyImported) newRows.push({ row, sh });
+        }
+      }
+    } catch(e) { console.warn('Sheet check error for', sh.name, e); }
+  }
+
+  lastPollTime = Date.now();
+  updateLastSyncLabel();
+
+  const totalChanges = newRows.length + modifiedRows.length;
+
+  if (totalChanges === 0) {
+    if (manual) toast('✓ App is up to date with your sheets', 'ok');
+    hideSyncBanner();
+    return;
+  }
+
+  // Store pending changes
+  pendingSheetChanges = { newRows, modifiedRows };
+  showSyncBanner(newRows.length, modifiedRows.length);
+}
+
+function hasSheetModified(localEntry, row) {
+  // Check if key fields differ between local and sheet row
+  const shTitle   = (row[1]||'').trim();
+  const shDesc    = (row[2]||'').trim();
+  const shCats    = (row[3]||'').split(',').map(s=>s.trim()).filter(Boolean).sort().join(',');
+  const shImpact  = (row[4]||'medium').trim().toLowerCase();
+  const shOutcome = (row[5]||'').trim();
+  const shEffort  = (row[6]||'').trim();
+  const lcCats    = (localEntry.cats||[]).slice().sort().join(',');
+  return (
+    localEntry.title   !== shTitle   ||
+    (localEntry.desc||'')    !== shDesc    ||
+    lcCats             !== shCats    ||
+    (localEntry.impact||'medium') !== shImpact  ||
+    (localEntry.outcome||'') !== shOutcome ||
+    String(localEntry.effort||'') !== shEffort
+  );
+}
+
+function showSyncBanner(nNew, nMod) {
+  const banner = document.getElementById('syncBanner');
+  const title  = document.getElementById('syncBannerTitle');
+  const sub    = document.getElementById('syncBannerSub');
+  const parts = [];
+  if (nNew)  parts.push(`${nNew} new row${nNew>1?'s':''} added in the sheet`);
+  if (nMod)  parts.push(`${nMod} row${nMod>1?'s':''} edited in the sheet`);
+  title.textContent = 'Changes detected in Google Sheet';
+  sub.textContent   = parts.join(' · ');
+  banner.classList.add('visible');
+}
+
+function hideSyncBanner() {
+  const banner = document.getElementById('syncBanner');
+  banner.classList.remove('visible');
+}
+
+function dismissSyncBanner() {
+  pendingSheetChanges = [];
+  hideSyncBanner();
+}
+
+// ─── APPLY PULLED CHANGES ─────────────────────────────────────────────────────
+async function applySheetChanges() {
+  if (!pendingSheetChanges || (!pendingSheetChanges.newRows?.length && !pendingSheetChanges.modifiedRows?.length)) {
+    hideSyncBanner();
+    return;
+  }
+  hideSyncBanner();
+
+  const { newRows, modifiedRows } = pendingSheetChanges;
+  pendingSheetChanges = [];
+
+  let imported = 0, updated = 0, skipped = 0;
+
+  // 1. Import brand-new rows (added directly in sheet)
+  for (const { row, sh } of newRows) {
+    const newEntry = rowToEntry(row, sh);
+    // Assign a local ID if the row doesn't have one, and write it back
+    if (!newEntry.id) {
+      newEntry.id = Date.now() + Math.floor(Math.random()*1000);
+      // Write back the ID to the sheet row so future syncs can track it
+      try {
+        const idRes = await gapi.client.sheets.spreadsheets.values.get({
+          spreadsheetId: sh.sheetId, range: `${sh.tab||'Sheet1'}!A:B`
+        });
+        const rows = idRes.result.values || [];
+        const rowIdx = rows.findIndex(r => r[0]===newEntry.date && r[1]===newEntry.title);
+        if (rowIdx > 0) {
+          await gapi.client.sheets.spreadsheets.values.update({
+            spreadsheetId: sh.sheetId,
+            range: `${sh.tab||'Sheet1'}!I${rowIdx+1}`,
+            valueInputOption: 'RAW',
+            resource: { values: [[String(newEntry.id)]] }
+          });
+        }
+      } catch(e) {}
+    }
+    entries.unshift(newEntry);
+    imported++;
+  }
+
+  // 2. Handle modified rows
+  if (modifiedRows.length) {
+    if (cfg.syncConflict === 'sheet') {
+      // Auto: keep sheet version
+      for (const { row, sh, localEntry } of modifiedRows) {
+        const updated_entry = rowToEntry(row, sh);
+        updated_entry.id = localEntry.id;
+        const idx = entries.findIndex(e => e.id === localEntry.id);
+        if (idx !== -1) entries[idx] = { ...localEntry, ...updated_entry };
+        updated++;
+      }
+    } else if (cfg.syncConflict === 'local') {
+      // Auto: keep local, skip
+      skipped += modifiedRows.length;
+    } else {
+      // Ask: queue conflicts
+      conflictQueue = [...modifiedRows];
+      save();
+      if (imported) { toast(`↓ ${imported} new entr${imported>1?'ies':'y'} pulled from sheet`, 'ok'); renderHistory(); }
+      processNextConflict();
+      return;
+    }
+  }
+
+  save();
+  updateLogBar();
+  renderHistory();
+
+  const parts = [];
+  if (imported) parts.push(`${imported} new`);
+  if (updated)  parts.push(`${updated} updated`);
+  if (skipped)  parts.push(`${skipped} skipped`);
+  if (parts.length) toast(`↓ Sheet sync: ${parts.join(', ')} entr${(imported+updated)>1?'ies':'y'}`, 'ok');
+}
+
+// ─── CONFLICT RESOLUTION ──────────────────────────────────────────────────────
+function processNextConflict() {
+  if (!conflictQueue.length) {
+    // All resolved
+    updateLogBar(); renderHistory();
+    return;
+  }
+  currentConflict = conflictQueue.shift();
+  const { row, sh, localEntry } = currentConflict;
+  const sheetEntry = rowToEntry(row, sh);
+
+  const compare = document.getElementById('conflictCompare');
+  compare.innerHTML = `
+    <div class="conflict-side local">
+      <div class="conflict-label l">📱 Local (App)</div>
+      <div class="conflict-field">Title</div><div class="conflict-val">${localEntry.title}</div>
+      <div class="conflict-field" style="margin-top:6px">Desc</div><div class="conflict-val">${localEntry.desc||'—'}</div>
+      <div class="conflict-field" style="margin-top:6px">Impact / Effort</div><div class="conflict-val">${localEntry.impact||'medium'} · ${localEntry.effort||'?'}h</div>
+      <div class="conflict-field" style="margin-top:6px">Categories</div><div class="conflict-val">${(localEntry.cats||[]).join(', ')||'—'}</div>
+    </div>
+    <div class="conflict-side remote">
+      <div class="conflict-label r">📊 Sheet (Remote)</div>
+      <div class="conflict-field">Title</div><div class="conflict-val">${sheetEntry.title}</div>
+      <div class="conflict-field" style="margin-top:6px">Desc</div><div class="conflict-val">${sheetEntry.desc||'—'}</div>
+      <div class="conflict-field" style="margin-top:6px">Impact / Effort</div><div class="conflict-val">${sheetEntry.impact||'medium'} · ${sheetEntry.effort||'?'}h</div>
+      <div class="conflict-field" style="margin-top:6px">Categories</div><div class="conflict-val">${(sheetEntry.cats||[]).join(', ')||'—'}</div>
+    </div>`;
+
+  document.getElementById('conflictModal').classList.add('open');
+}
+
+function resolveConflict(choice) {
+  document.getElementById('conflictModal').classList.remove('open');
+  if (!currentConflict) { processNextConflict(); return; }
+  const { row, sh, localEntry } = currentConflict;
+
+  if (choice === 'sheet') {
+    const updated_entry = rowToEntry(row, sh);
+    updated_entry.id = localEntry.id;
+    const idx = entries.findIndex(e => e.id === localEntry.id);
+    if (idx !== -1) entries[idx] = { ...localEntry, ...updated_entry };
+    toast('Sheet version kept', 'ok');
+  } else if (choice === 'local') {
+    toast('Local version kept', 'ok');
+  } else {
+    toast('Skipped — will ask again next sync', '');
+  }
+
+  save();
+  currentConflict = null;
+  setTimeout(processNextConflict, 200);
 }
 
 // ─── GAPI (Google Identity Services) ─────────────────────────────────────────
@@ -666,8 +1101,6 @@ let accessToken = null;
 
 function loadGapi() {
   if (!cfg.clientId) return;
-
-  // Load gapi client (for Sheets API calls)
   if (!window.gapi) {
     const sc = document.createElement('script');
     sc.src = 'https://apis.google.com/js/api.js';
@@ -677,8 +1110,6 @@ function loadGapi() {
   } else {
     gapi.load('client', initGapiClient);
   }
-
-  // Load GIS token client (replaces deprecated auth2)
   if (!window.google?.accounts) {
     const sc2 = document.createElement('script');
     sc2.src = 'https://accounts.google.com/gsi/client';
@@ -695,11 +1126,8 @@ async function initGapiClient() {
     await gapi.client.init({});
     await gapi.client.load('https://sheets.googleapis.com/$discovery/rest?version=v4');
     gapiReady = true;
-    // If we already have a token (e.g. page reload), apply it
     if (accessToken) gapi.client.setToken({ access_token: accessToken });
-  } catch(e) {
-    toast('Failed to init Google Sheets client','err');
-  }
+  } catch(e) { toast('Failed to init Google Sheets client','err'); }
 }
 
 function initTokenClient() {
@@ -718,18 +1146,21 @@ function initTokenClient() {
       onSignIn(true);
     },
   });
-  // Auto-request token (no popup if already consented)
   tokenClient.requestAccessToken({ prompt: '' });
 }
 
 function onSignIn(ok) {
   signedIn = ok;
   if (ok) {
-    // GIS doesn't expose profile easily without extra call; show generic confirmation
     const status = document.getElementById('authStatus');
     if (status) status.textContent = '✓ Connected';
     cfg.sheets.forEach(s => ensureHeaders(s));
     syncAllPending();
+    // Start polling if enabled
+    if (cfg.autoSync) startPolling();
+    // Show pull button
+    const histPullBtn = document.getElementById('histPullBtn');
+    if (histPullBtn) histPullBtn.style.display = '';
   }
   renderSwitcher(); updateLogBar();
 }
@@ -768,18 +1199,13 @@ async function updateEntryInSheet(entry) {
   const sh = sheetById(entry.sheetId);
   if (!sh?.sheetId) return false;
   try {
-    // Find the row by entry ID in column I
     const res = await gapi.client.sheets.spreadsheets.values.get({
-      spreadsheetId: sh.sheetId,
-      range: `${sh.tab||'Sheet1'}!I:I`
+      spreadsheetId: sh.sheetId, range: `${sh.tab||'Sheet1'}!I:I`
     });
     const rows = res.result.values || [];
     const rowIndex = rows.findIndex(r => r[0] === String(entry.id));
-    if (rowIndex === -1) {
-      // Row not found (maybe never synced) — just append as new
-      return await pushEntry(entry);
-    }
-    const rowNum = rowIndex + 1; // 1-based for A1 notation
+    if (rowIndex === -1) return await pushEntry(entry);
+    const rowNum = rowIndex + 1;
     await gapi.client.sheets.spreadsheets.values.update({
       spreadsheetId: sh.sheetId,
       range: `${sh.tab||'Sheet1'}!A${rowNum}:K${rowNum}`,
@@ -802,8 +1228,8 @@ async function syncAllPending() {
 
 // ─── ADD ENTRY ────────────────────────────────────────────────────────────────
 async function addEntry() {
-  const date    = document.getElementById('fDate').value;
-  const title   = document.getElementById('fTitle').value.trim();
+  const date  = document.getElementById('fDate').value;
+  const title = document.getElementById('fTitle').value.trim();
   if (!date||!title) { toast('Date and title required','err'); return; }
   const as = activeSheet();
   const entry = {
@@ -838,46 +1264,26 @@ async function deleteEntry(id) {
   const entry = entries.find(e => e.id === id);
   entries = entries.filter(e => e.id !== id);
   save(); updateLogBar(); renderHistory(); toast('Entry deleted');
-
-  // Also delete the row from Google Sheet if synced
   if (signedIn && entry?.synced && entry?.sheetId) {
     const sh = sheetById(entry.sheetId);
     if (!sh?.sheetId) return;
     try {
-      // Find the row with this entry's ID in column I
       const res = await gapi.client.sheets.spreadsheets.values.get({
-        spreadsheetId: sh.sheetId,
-        range: `${sh.tab||'Sheet1'}!I:I`
+        spreadsheetId: sh.sheetId, range: `${sh.tab||'Sheet1'}!I:I`
       });
       const rows = res.result.values || [];
       const rowIndex = rows.findIndex(r => r[0] === String(entry.id));
-      if (rowIndex === -1) return; // row not found, nothing to delete
-
-      // Get the numeric sheetId needed for batchUpdate
+      if (rowIndex === -1) return;
       const meta = await gapi.client.sheets.spreadsheets.get({ spreadsheetId: sh.sheetId });
       const sheetMeta = meta.result.sheets.find(s => s.properties.title === (sh.tab||'Sheet1'));
       if (!sheetMeta) return;
       const numericSheetId = sheetMeta.properties.sheetId;
-
       await gapi.client.sheets.spreadsheets.batchUpdate({
         spreadsheetId: sh.sheetId,
-        resource: {
-          requests: [{
-            deleteDimension: {
-              range: {
-                sheetId: numericSheetId,
-                dimension: 'ROWS',
-                startIndex: rowIndex,
-                endIndex: rowIndex + 1
-              }
-            }
-          }]
-        }
+        resource: { requests: [{ deleteDimension: { range: { sheetId: numericSheetId, dimension: 'ROWS', startIndex: rowIndex, endIndex: rowIndex+1 } } }] }
       });
       toast('Deleted from Google Sheet ✓', 'ok');
-    } catch(e) {
-      toast('Local deleted — Sheet row removal failed', 'err');
-    }
+    } catch(e) { toast('Local deleted — Sheet row removal failed', 'err'); }
   }
 }
 
@@ -906,10 +1312,54 @@ async function saveEdit() {
   e.month   = e.date.slice(0,7);
   e.synced  = false;
   save(); closeEditModal(); renderHistory(); toast('Updated','ok');
-  const ok = await updateEntryInSheet(e); if (ok) { e.synced=true; save(); renderHistory(); toast('Synced to Sheet ✓','ok'); } else if(!signedIn) { toast('Saved locally — will sync later','ok'); }
+  const ok = await updateEntryInSheet(e);
+  if (ok) { e.synced=true; save(); renderHistory(); toast('Synced to Sheet ✓','ok'); }
+  else if (!signedIn) { toast('Saved locally — will sync later','ok'); }
 }
 function closeEditModal() { document.getElementById('editModal').classList.remove('open'); editingId=null; }
 function closeBgEdit(e)   { if (e.target===document.getElementById('editModal')) closeEditModal(); }
+
+// ─── MANAGE SHEETS MODAL (continued) ──────────────────────────────────────────
+function pickColor(el) {
+  document.querySelectorAll('.swatch').forEach(s => s.classList.remove('sel'));
+  el.classList.add('sel'); newColor = el.dataset.color;
+}
+
+function addNewSheet() {
+  const name    = document.getElementById('nsName').value.trim();
+  const sheetId = document.getElementById('nsSheetId').value.trim();
+  if (!name)    { toast('Enter a sheet name','err'); return; }
+  if (!sheetId) { toast('Enter a Google Sheet ID','err'); return; }
+  const sheet = { id: uid(), name, sheetId, color: newColor, tab: 'Sheet1' };
+  cfg.sheets.push(sheet);
+  if (!cfg.activeSheetId) cfg.activeSheetId = sheet.id;
+  saveCfg();
+  document.getElementById('nsName').value = '';
+  document.getElementById('nsSheetId').value = '';
+  renderSheetList(); renderSwitcher(); renderDropdowns(); updateLogBar();
+  if (signedIn) ensureHeaders(sheet);
+  toast(`"${name}" connected!`, 'ok');
+}
+
+function removeSheet(id) {
+  const s = sheetById(id); if (!s) return;
+  const n = entries.filter(e=>e.sheetId===id).length;
+  if (!confirm(`Remove sheet "${s.name}"?\n\n${n>0?n+' entries will keep their local data but won\'t sync.\n\n':''}The Google Sheet itself will NOT be deleted.`)) return;
+  cfg.sheets = cfg.sheets.filter(sh => sh.id !== id);
+  if (cfg.activeSheetId === id) cfg.activeSheetId = cfg.sheets[0]?.id || null;
+  saveCfg();
+  renderSheetList(); renderSwitcher(); renderDropdowns(); updateLogBar();
+  toast(`"${s.name}" removed`);
+}
+
+function saveClientId() {
+  const cid = document.getElementById('cfgClientId').value.trim();
+  if (!cid) { toast('Enter your Client ID','err'); return; }
+  cfg.clientId = cid; saveCfg();
+  document.getElementById('authStatus').textContent = 'Connecting…';
+  tokenClient = null; accessToken = null; gapiReady = false; signedIn = false;
+  loadGapi();
+}
 
 // ─── HISTORY ──────────────────────────────────────────────────────────────────
 function renderHistory() {
@@ -925,6 +1375,8 @@ function renderHistory() {
 
   document.getElementById('histCount').textContent = list.length+' entries';
   document.getElementById('syncBtn').style.display = (list.some(e=>!e.synced) && cfg.sheets.length) ? '':'none';
+  const histPullBtn = document.getElementById('histPullBtn');
+  if (histPullBtn) histPullBtn.style.display = signedIn && cfg.sheets.length ? '' : 'none';
 
   const el = document.getElementById('histList');
   if (!list.length) {
@@ -958,8 +1410,11 @@ function renderHistory() {
     const sh = sheetById(e.sheetId);
     const impCls = e.impact==='high'?'chip-hi':e.impact==='medium'?'chip-med':'chip-lo';
     const sheetChip = sh ? `<span class="chip" style="background:${sh.color}18;color:${sh.color};border:1px solid ${sh.color}40">${sh.name}</span>` : '';
+    const fromSheetChip = e.fromSheet ? `<span class="chip chip-sheet-src">from sheet</span>` : '';
+    const syncDotCls = e.fromSheet ? 'sheet' : (e.synced ? 'ok' : 'pend');
+    const syncDotTitle = e.fromSheet ? 'Imported from Sheet' : (e.synced ? 'Synced' : 'Pending sync');
     return `
-<div class="entry ${mainCat(e)}">
+<div class="entry ${mainCat(e)}${e.fromSheet?' t-sheet-modified':''}">
   <div class="entry-row">
     <div style="flex:1;min-width:0">
       <div class="entry-title">${e.title}</div>
@@ -969,7 +1424,8 @@ function renderHistory() {
         <span class="chip ${impCls}">${e.impact||'medium'}</span>
         ${e.effort?`<span class="chip chip-other">${e.effort}h</span>`:''}
         ${sheetChip}
-        <span class="sync-dot ${e.synced?'ok':'pend'}" title="${e.synced?'Synced':'Pending'}"></span>
+        ${fromSheetChip}
+        <span class="sync-dot ${syncDotCls}" title="${syncDotTitle}"></span>
       </div>
       ${e.outcome?`<div class="entry-outcome">${e.outcome}</div>`:''}
     </div>
@@ -1206,6 +1662,9 @@ function deleteReport() {
   ['saveReflBtn','exportRptBtn','deleteRptBtn'].forEach(id=>document.getElementById(id).style.display='none');
   toast('Report deleted','ok');
 }
+
+// Update "last checked" label every 30s
+setInterval(updateLastSyncLabel, 30000);
 </script>
 </body>
 </html>
