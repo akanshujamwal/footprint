@@ -898,11 +898,11 @@ async function checkSheetChanges(manual = false) {
         } else {
           // No app ID — row was added directly in the sheet
           // Check if we already imported it (match by title+date+sheet)
+          // Match by title+date+sheet regardless of origin
           const alreadyImported = entries.find(e =>
             e.sheetId === sh.id &&
             e.date === date &&
-            e.title.toLowerCase() === title.toLowerCase() &&
-            e.fromSheet
+            e.title.toLowerCase() === title.toLowerCase()
           );
           if (!alreadyImported) newRows.push({ row, sh });
         }
@@ -983,20 +983,19 @@ async function applySheetChanges() {
   // 1. Import brand-new rows (added directly in sheet)
   for (const { row, sh } of newRows) {
     const newEntry = rowToEntry(row, sh);
-    // Assign a local ID if the row doesn't have one, and write it back
+    // Assign a local ID if the row doesn't have one, and write it back to sheet
     if (!newEntry.id) {
-      newEntry.id = Date.now() + Math.floor(Math.random()*1000);
-      // Write back the ID to the sheet row so future syncs can track it
+      newEntry.id = Date.now() + Math.floor(Math.random() * 9999);
       try {
         const idRes = await gapi.client.sheets.spreadsheets.values.get({
           spreadsheetId: sh.sheetId, range: `${sh.tab||'Sheet1'}!A:B`
         });
-        const rows = idRes.result.values || [];
-        const rowIdx = rows.findIndex(r => r[0]===newEntry.date && r[1]===newEntry.title);
+        const shRows = idRes.result.values || [];
+        const rowIdx = shRows.findIndex((r, i) => i > 0 && r[0] === newEntry.date && r[1] === newEntry.title);
         if (rowIdx > 0) {
           await gapi.client.sheets.spreadsheets.values.update({
             spreadsheetId: sh.sheetId,
-            range: `${sh.tab||'Sheet1'}!I${rowIdx+1}`,
+            range: `${sh.tab||'Sheet1'}!I${rowIdx + 1}`,
             valueInputOption: 'RAW',
             resource: { values: [[String(newEntry.id)]] }
           });
@@ -1007,39 +1006,49 @@ async function applySheetChanges() {
     imported++;
   }
 
-  // 2. Handle modified rows
-  if (modifiedRows.length) {
-    if (cfg.syncConflict === 'sheet') {
-      // Auto: keep sheet version
-      for (const { row, sh, localEntry } of modifiedRows) {
-        const updated_entry = rowToEntry(row, sh);
-        updated_entry.id = localEntry.id;
-        const idx = entries.findIndex(e => e.id === localEntry.id);
-        if (idx !== -1) entries[idx] = { ...localEntry, ...updated_entry };
-        updated++;
+  // 2. Handle modified rows (sheet version is newer/different)
+  const autoKeepSheet  = cfg.syncConflict === 'sheet';
+  const autoKeepLocal  = cfg.syncConflict === 'local';
+  const shouldAsk      = cfg.syncConflict === 'ask';
+  conflictQueue = []; // reset before building
+
+  for (const { row, sh, localEntry } of modifiedRows) {
+    if (autoKeepSheet) {
+      // Overwrite local entry with sheet data, preserve local id
+      const sheetData = rowToEntry(row, sh);
+      const idx = entries.findIndex(e => e.id === localEntry.id);
+      if (idx !== -1) {
+        entries[idx] = {
+          ...sheetData,         // new sheet fields first
+          id: localEntry.id,    // always keep local numeric id
+          sheetId: localEntry.sheetId,
+          sheetName: localEntry.sheetName,
+          synced: true,
+          fromSheet: true
+        };
       }
-    } else if (cfg.syncConflict === 'local') {
-      // Auto: keep local, skip
-      skipped += modifiedRows.length;
-    } else {
-      // Ask: queue conflicts
-      conflictQueue = [...modifiedRows];
-      save();
-      if (imported) { toast(`↓ ${imported} new entr${imported>1?'ies':'y'} pulled from sheet`, 'ok'); renderHistory(); }
-      processNextConflict();
-      return;
+      updated++;
+    } else if (autoKeepLocal) {
+      skipped++;
+    } else if (shouldAsk) {
+      conflictQueue.push({ row, sh, localEntry });
     }
   }
 
+  // Always save & render what we have so far (new imports are visible immediately)
   save();
   updateLogBar();
   renderHistory();
 
+  // Show what happened
   const parts = [];
   if (imported) parts.push(`${imported} new`);
   if (updated)  parts.push(`${updated} updated`);
   if (skipped)  parts.push(`${skipped} skipped`);
-  if (parts.length) toast(`↓ Sheet sync: ${parts.join(', ')} entr${(imported+updated)>1?'ies':'y'}`, 'ok');
+  if (parts.length) toast(`↓ Sheet sync: ${parts.join(', ')} entr${(imported + updated) > 1 ? 'ies' : 'y'}`, 'ok');
+
+  // If there are conflicts to ask about, start the queue AFTER render
+  if (conflictQueue.length) processNextConflict();
 }
 
 // ─── CONFLICT RESOLUTION ──────────────────────────────────────────────────────
@@ -1079,20 +1088,28 @@ function resolveConflict(choice) {
   const { row, sh, localEntry } = currentConflict;
 
   if (choice === 'sheet') {
-    const updated_entry = rowToEntry(row, sh);
-    updated_entry.id = localEntry.id;
+    const sheetData = rowToEntry(row, sh);
     const idx = entries.findIndex(e => e.id === localEntry.id);
-    if (idx !== -1) entries[idx] = { ...localEntry, ...updated_entry };
-    toast('Sheet version kept', 'ok');
+    if (idx !== -1) {
+      entries[idx] = {
+        ...sheetData,
+        id: localEntry.id,
+        sheetId: localEntry.sheetId,
+        sheetName: localEntry.sheetName,
+        synced: true,
+        fromSheet: true
+      };
+    }
+    save(); renderHistory();
+    toast('Sheet version applied ✓', 'ok');
   } else if (choice === 'local') {
     toast('Local version kept', 'ok');
   } else {
     toast('Skipped — will ask again next sync', '');
   }
 
-  save();
   currentConflict = null;
-  setTimeout(processNextConflict, 200);
+  setTimeout(processNextConflict, 300);
 }
 
 // ─── GAPI (Google Identity Services) ─────────────────────────────────────────
