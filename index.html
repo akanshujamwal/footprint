@@ -526,6 +526,22 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
       </div>
       <button class="btn btn-primary" onclick="addNewSheet()">Add Sheet</button>
     </div>
+    <!-- Groq API Key -->
+    <div class="api-section" id="aiSection">
+      <div class="section-label" style="margin-bottom:12px">AI Report Settings (Free)</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.7">
+        Uses <strong>Groq</strong> — completely free, no credit card needed. Powered by <strong>Llama 3.3 70B</strong> open-source model.<br>
+        Get a free key at <code>console.groq.com</code> → API Keys → Create API Key. Takes 30 seconds.
+      </p>
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+        <div class="field" style="flex:1;min-width:200px"><label>Groq API Key (Free)</label>
+          <input type="password" id="cfgAnthropicKey" placeholder="gsk_…">
+        </div>
+        <button class="btn btn-primary" onclick="saveAnthropicKey()">Save Key</button>
+        <div id="aiKeyStatus" style="font-family:DM Mono,monospace;font-size:11px;color:var(--muted);align-self:flex-end;padding-bottom:2px"></div>
+      </div>
+    </div>
+
     <!-- Client ID setup -->
     <div class="api-section" id="apiSection">
       <div class="section-label" style="margin-bottom:12px">Google API Connection</div>
@@ -775,6 +791,11 @@ function openMgModal() {
   applySyncSettingsUI();
   if (cfg.clientId) document.getElementById('cfgClientId').value = cfg.clientId;
   document.getElementById('authStatus').textContent = signedIn ? '✓ Connected' : cfg.clientId ? 'Connecting…' : '';
+  if (cfg.anthropicKey) {
+    document.getElementById('cfgAnthropicKey').value = cfg.anthropicKey;
+    document.getElementById('aiKeyStatus').textContent = '✓ Key saved';
+    document.getElementById('aiKeyStatus').style.color = 'var(--dev)';
+  }
   document.getElementById('mgModal').classList.add('open');
 }
 function closeMgModal() { document.getElementById('mgModal').classList.remove('open'); }
@@ -1378,6 +1399,16 @@ function saveClientId() {
   loadGapi();
 }
 
+function saveAnthropicKey() {
+  const key = document.getElementById('cfgAnthropicKey').value.trim();
+  if (!key) { toast('Enter your Groq API key','err'); return; }
+  if (!key.startsWith('gsk_')) { toast('Groq keys start with gsk_','err'); return; }
+  cfg.anthropicKey = key; saveCfg();
+  document.getElementById('aiKeyStatus').textContent = '✓ Groq key saved';
+  document.getElementById('aiKeyStatus').style.color = 'var(--dev)';
+  toast('Groq API key saved! Ready to generate reports.', 'ok');
+}
+
 // ─── HISTORY ──────────────────────────────────────────────────────────────────
 function renderHistory() {
   const fm  = document.getElementById('fMonth').value;
@@ -1548,15 +1579,45 @@ Respond with ONLY valid JSON (absolutely no markdown, no explanation, no code bl
 }`;
 
   let r;
+  const apiKey = cfg.anthropicKey || '';
+  if (!apiKey) {
+    out.innerHTML = `<div class="empty"><div class="empty-icon">🔑</div>
+      <h3>Free API Key Required</h3>
+      <p style="margin-bottom:12px">This uses <strong>Groq</strong> — a free AI service. No credit card needed.</p>
+      <p style="margin-bottom:6px;font-size:13px">1. Go to <strong>console.groq.com</strong> and sign up (free)</p>
+      <p style="margin-bottom:6px;font-size:13px">2. Go to <strong>API Keys → Create API Key</strong></p>
+      <p style="margin-bottom:16px;font-size:13px">3. Paste the key in <strong>⚙ Manage → AI Settings</strong></p>
+      <button class="btn btn-primary" onclick="openMgModal()">⚙ Open Settings</button>
+    </div>`;
+    return;
+  }
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:2500, messages:[{role:'user',content:prompt}] })
+    // Use Groq API (free, OpenAI-compatible, Llama 3.3 70B)
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + apiKey
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        max_tokens: 2500,
+        temperature: 0.3,
+        messages: [
+          { role: 'system', content: 'You are a senior engineering manager and product lead. You respond ONLY with valid JSON, no markdown, no explanation.' },
+          { role: 'user', content: prompt }
+        ]
+      })
     });
     const data = await res.json();
-    const raw = (data.content||[]).map(c=>c.text||'').join('').replace(/```json|```/g,'').trim();
+    if (data.error) throw new Error(data.error.message || 'Groq API error');
+    const raw = (data.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim();
     r = JSON.parse(raw);
-  } catch(e) { r = fallbackReport(me); }
+  } catch(e) {
+    console.error('AI report error:', e);
+    out.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><h3>AI Generation Failed</h3><p style="margin-bottom:8px">${e.message || 'Unknown error'}</p><p style="font-size:12px;color:var(--muted)">Check your Groq API key in ⚙ Manage → AI Settings</p></div>`;
+    return;
+  }
 
   currentReport = r;
   currentReportMonth = month + (fsh ? '::'+fsh : '');
@@ -1574,7 +1635,7 @@ function fallbackReport(me) {
     devGrade:g(dN), pmGrade:g(pN), overallGrade:g(me.length), consistencyGrade:'B',
     devGradeReason:`${dN} dev tasks logged across the month.`,
     pmGradeReason:`${pN} PM-related tasks logged.`,
-    executiveSummary:`You logged ${me.length} entries totalling ${hrs.toFixed(1)} hours this period. The AI analysis requires an Anthropic API key — add it to get deep personalised insights.`,
+    executiveSummary:`You logged ${me.length} entries${hrs>0?' totalling '+hrs.toFixed(1)+' hours':''} this period. Add your Anthropic API key in Manage → AI Settings to get deep personalised AI insights.`,
     deepAnalysis:'Connect to the Anthropic API for a deep analysis of your work patterns, quality, and growth trajectory.',
     oneThingToRemember:'The more detail you log, the more insight you get back.',
     devStrengths:['Active development logging','Tracking task outcomes','Cross-category work visibility'],
