@@ -1840,16 +1840,34 @@ async function exportPDF() {
     doc.setFontSize(size);
   }
 
+  function drawPageBase() {
+    // Warm parchment background - fills entire page
+    setFill(C.paper);
+    doc.rect(0, 0, PW, PH, 'F');
+    // Slightly lighter writing area
+    setFill([249, 246, 241]);
+    doc.rect(ML + 12, 0, PW - ML - MR - 12, PH, 'F');
+    // Horizontal ruled lines
+    for (let i = 0, ly = 7; ly < PH; ly += 6.5, i++) {
+      doc.setLineWidth(i % 4 === 0 ? 0.22 : 0.1);
+      setDraw(i % 4 === 0 ? [190, 175, 155] : C.rule);
+      doc.line(0, ly, PW, ly);
+    }
+    // Gold margin line (bold)
+    doc.setLineWidth(0.6);
+    setDraw(C.gold);
+    doc.line(ML + 8, 0, ML + 8, PH);
+    // Second thinner margin
+    doc.setLineWidth(0.15);
+    setDraw([220, 185, 105]);
+    doc.line(ML + 11, 0, ML + 11, PH);
+    doc.setLineWidth(0.2);
+  }
+
   function newPage() {
     doc.addPage();
+    drawPageBase();
     y = MT;
-    // Light ruled lines on each page
-    doc.setDrawColor(...C.rule); doc.setLineWidth(0.1);
-    for (let ly = 10; ly < PH; ly += 7) doc.line(ML, ly, PW-MR, ly);
-    // Gold margin line
-    doc.setDrawColor(...C.gold); doc.setLineWidth(0.3);
-    doc.line(ML+6, 0, ML+6, PH);
-    doc.setLineWidth(0.2);
   }
 
   function checkPage(needed = 20) {
@@ -1951,16 +1969,8 @@ async function exportPDF() {
   // PAGE 1 — COVER
   // ══════════════════════════════════════════════════════════════
 
-  // Background paper colour
-  setFill(C.paper); doc.rect(0, 0, PW, PH, 'F');
-
-  // Ruled lines
-  doc.setLineWidth(0.1); setDraw(C.rule);
-  for (let ly = 10; ly < PH; ly += 7) doc.line(ML, ly, PW-MR, ly);
-
-  // Gold margin line
-  setDraw(C.gold); doc.setLineWidth(0.4);
-  doc.line(ML+6, 0, ML+6, PH);
+  // Draw page 1 background (paper + ruled lines + margin)
+  drawPageBase();
 
   // Dark header band
   setFill(C.ink); doc.rect(0, 0, PW, 55, 'F');
